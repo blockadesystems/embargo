@@ -1,0 +1,34 @@
+apiVersion: automation.cloudbees.io/v1alpha1
+kind: workflow
+name: My automation
+on:
+  push:
+    branches:
+      - "**"
+jobs:
+  ci-job:
+    steps:
+      - uses: docker://alpine/git:latest
+        name: Pull alpin image
+        run: |
+          git config --global --add safe.directory /cloudbees/workspace
+      - uses: cloudbees-io/checkout@v1
+        name: checkout
+      - uses: docker://golang:1.21
+        name: Build Go app
+        run: |
+          go build -v ./...
+      - uses: docker://golang:1.21
+        name: Run tests
+        run: |
+          go test -v ./...
+      - uses: cloudbees-io/configure-oci-credentials@v1
+        name: Set up Docker Hub registry
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      - uses: cloudbees-io/kaniko@v1
+        name: Push image to registry
+        with:
+          destination: onestoop/embargo:${{ cloudbees.version }}
