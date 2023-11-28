@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/blockadesystems/embargo/internal/encryption"
-	"github.com/blockadesystems/embargo/internal/shared"
+	// "github.com/blockadesystems/embargo/internal/shared"
 	"github.com/boltdb/bolt"
 	"github.com/gocql/gocql"
 	"github.com/google/uuid"
@@ -85,7 +85,7 @@ type Storage interface {
 	DeleteKey(bucket string, key string) error
 	DeleteBucket(bucket string) error
 	BucketExists(bucket string) bool
-	GetMountChildren(bucket string) ([]string, error)
+	// GetMountChildren(bucket string, key string) ([]string, error)
 }
 
 type BoltStorage struct {
@@ -291,35 +291,39 @@ func (b BoltStorage) BucketExists(bucket string) bool {
 	return exists
 }
 
-func (b BoltStorage) GetMountChildren(bucket string) ([]string, error) {
-	var children []string
-	err := b.Db.View(func(tx *bolt.Tx) error {
-		mounts_bucket := tx.Bucket([]byte("embargo_mounts"))
+// func (b BoltStorage) GetMountChildren(bucket string, key string) ([]string, error) {
+// 	var children []string
+// 	err := b.Db.View(func(tx *bolt.Tx) error {
+// 		mounts_bucket := tx.Bucket([]byte("embargo_mounts"))
+// 		// catch panic here if bucket doesn't exist
+// 		if mounts_bucket == nil {
+// 			return fmt.Errorf("bucket does not exist")
+// 		}
 
-		c := mounts_bucket.Cursor()
-		// search the mounts_bucket for items with a parent = bucket
-		for k, v := c.First(); k != nil; k, v = c.Next() {
-			// marshal the json into a Mounts struct
-			// check if the parent is the bucket
-			// if so, append the path to the children slice
-			// return the children slice
+// 		// get the value of the key
+// 		v := mounts_bucket.Get([]byte(key))
+// 		if v == nil {
+// 			return fmt.Errorf("key does not exist")
+// 		}
 
-			thisMount := shared.Mounts{}
-			err := json.Unmarshal(v, &thisMount)
-			if err != nil {
-				println(err)
-			}
-			if thisMount.Parent == bucket {
-				children = append(children, thisMount.Path+"/")
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return children, nil
-}
+// 		// unmarshal the json into a Secret struct
+// 		secret := shared.Secret{}
+// 		err := json.Unmarshal(v, &secret)
+// 		if err != nil {
+// 			return fmt.Errorf("error unmarshalling json")
+// 		}
+
+// 		// build a list of children from the secret subpaths
+// 		for _, subpath := range secret.Subpaths {
+// 			children = append(children, subpath.Path)
+// 		}
+// 		return nil
+// 	})
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	return children, nil
+// }
 
 // Cassandra
 func (c CassandraStorage) OpenDB() (Storage, error) {
@@ -458,26 +462,25 @@ func (c CassandraStorage) BucketExists(bucket string) bool {
 	return exists
 }
 
-func (c CassandraStorage) GetMountChildren(bucket string) ([]string, error) {
-	var children []string
+// func (c CassandraStorage) GetMountChildren(bucket string, key string) ([]string, error) {
+// 	var children []string
+// 	var value string
+// 	err := c.Db.Query("SELECT value FROM "+Keyspace+".embargo_mounts WHERE key = ?", key).Scan(&value)
+// 	if err != nil {
+// 		return nil, err
+// 	}
 
-	data := c.Db.Query("SELECT value FROM " + Keyspace + ".embargo_mounts").Iter()
-	var value string
-	for data.Scan(&value) {
-		thisMount := shared.Mounts{}
-		err := json.Unmarshal([]byte(value), &thisMount)
-		if err != nil {
-			println(err)
-		}
-		if thisMount.Parent == bucket {
-			// remove the bucket from the path
-			// append the path to the children slice
-			child := strings.Replace(thisMount.Path, bucket, "", 1)
-			// remove leading slash
-			child = strings.TrimPrefix(child, "/")
-			children = append(children, child+"/")
-		}
-	}
+// 	// unmarshal the json into a Secret struct
+// 	secret := shared.Secret{}
+// 	err = json.Unmarshal([]byte(value), &secret)
+// 	if err != nil {
+// 		return nil, err
+// 	}
 
-	return children, nil
-}
+// 	// build a list of children from the secret subpaths
+// 	for _, subpath := range secret.Subpaths {
+// 		children = append(children, subpath.Path)
+// 	}
+
+// 	return children, nil
+// }
