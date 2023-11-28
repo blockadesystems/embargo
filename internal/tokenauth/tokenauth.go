@@ -227,6 +227,7 @@ func ValidateToken(token string) (EmbargoToken, bool) {
 // Middleware function to validate Embargo token
 func ValidateEmbargoToken(next echo.HandlerFunc) echo.HandlerFunc {
 	db := storage.GetStore()
+
 	return func(c echo.Context) error {
 		// check if token exists in header
 		tokenString := c.Request().Header.Get("X-Embargo-Token")

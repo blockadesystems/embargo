@@ -34,6 +34,14 @@ type EncryptionKeyList struct {
 	OldKeys   []EncryptionKey `json:"keys"`
 }
 
+type SecretMetadata struct {
+	CreatedAt          int64             `json:"created_at" validate:"required"`
+	Path               string            `json:"path" validate:"required"`
+	MaxVersions        int64             `json:"max_versions" validate:"required"`
+	DeleteVersionAfter int64             `json:"delete_version_after" validate:"required"`
+	CustomMetadata     map[string]string `json:"custom_metadata" validate:"required"`
+}
+
 type SecretVersionMetadata struct {
 	Version        int64             `json:"version" validate:"required"`
 	CreatedAt      int64             `json:"created_at" validate:"required"`
@@ -48,15 +56,12 @@ type SecretVersion struct {
 	Metadata SecretVersionMetadata `json:"metadata" validate:"required"`
 }
 
-type SecretMetadata struct {
-	CreatedAt          int64             `json:"created_at" validate:"required"`
-	Path               string            `json:"path" validate:"required"`
-	MaxVersions        int64             `json:"max_versions" validate:"required"`
-	DeleteVersionAfter int64             `json:"delete_version_after" validate:"required"`
-	CustomMetadata     map[string]string `json:"custom_metadata" validate:"required"`
+type Paths struct {
+	Path     string          `json:"path"`
+	Versions []SecretVersion `json:"versions"`
 }
 
 type Secret struct {
-	Metadata SecretMetadata  `json:"metadata" validate:"required"`
-	Versions []SecretVersion `json:"versions" validate:"required"`
+	Metadata SecretMetadata `json:"metadata" validate:"required"`
+	Paths    []Paths        `json:"paths" validate:"required"`
 }
