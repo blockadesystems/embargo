@@ -68,8 +68,9 @@ type PostedMountOptions struct {
 }
 
 type ReturnMounts struct {
-	Data  []shared.Mounts `json:"data" validate:"required"`
-	Total int             `json:"total" validate:"required"`
+	// Data  []shared.Mounts `json:"data" validate:"required"`
+	Data  map[string]interface{} `json:"data" validate:"required"`
+	Total int                    `json:"total" validate:"required"`
 }
 
 // type KVOptions struct {
@@ -652,27 +653,9 @@ func CreateMount(c echo.Context) error {
 		r.Config.MaxVersions = 0
 	}
 
-	// Check if the mount should have a parent
-	// If so, check if the parent exists
-	// If not, return an error
-	// if pathNoSlash contains an underscore, it has a parent
-	parent := ""
-	if strings.Contains(pathNoSlash, "_") {
-		// Split the path into parts
-		parts := strings.Split(pathNoSlash, "_")
-		// Get the parent
-		parent = parts[0]
-		// Check if the parent exists
-		k, _ := db.ReadKey("embargo_mounts", parent, false)
-		if k == "" {
-			return c.JSON(http.StatusBadRequest, "parent mount does not exist")
-		}
-	}
-
 	// Create a mount
 	mount := shared.Mounts{
 		Path:        path,
-		Parent:      parent,
 		BucketType:  r.Type,
 		Description: r.Description,
 		CreatedAt:   time.Now().Unix(),
@@ -718,18 +701,24 @@ func Get_mounts(c echo.Context) error {
 
 	// Return the mounts
 	var returnMounts ReturnMounts
-	returnMounts.Data = make([]shared.Mounts, len(mounts))
+	returnMounts.Data = make(map[string]interface{})
 	returnMounts.Total = len(mounts)
-	i := 0
 	for k, v := range mounts {
-		err = json.Unmarshal([]byte(v), &returnMounts.Data[i])
+		var m shared.Mounts
+		err = json.Unmarshal([]byte(v), &m)
 		if err != nil {
 			log.Println(err)
 			return c.JSON(http.StatusInternalServerError, err)
 		}
-		returnMounts.Data[i].Path = k
-		i++
+		tmp := make(map[string]interface{})
+		tmp["description"] = m.Description
+		tmp["type"] = m.BucketType
+		tmp["config"] = m.Config
+		tmp["created_at"] = time.Unix(m.CreatedAt, 0).UTC().Format(time.RFC3339)
+		tmp["updated_at"] = time.Unix(m.UpdatedAt, 0).UTC().Format(time.RFC3339)
+		returnMounts.Data[k+"/"] = tmp
 	}
+
 	return c.JSON(http.StatusOK, returnMounts)
 }
 

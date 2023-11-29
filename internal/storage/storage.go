@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/blockadesystems/embargo/internal/encryption"
+	"github.com/blockadesystems/embargo/internal/shared"
+
 	// "github.com/blockadesystems/embargo/internal/shared"
 	"github.com/boltdb/bolt"
 	"github.com/gocql/gocql"
@@ -60,6 +62,77 @@ func InitDB(dbType string) {
 		Store.CreateBucket("embargo_tokens")
 		Store.CreateBucket("embargo_policies")
 	}
+
+	// Add sys, tokens, and policies mounts if they don't exist
+	sysMount := shared.Mounts{
+		Path:        "sys",
+		BucketType:  "sys",
+		Description: "System mount",
+		CreatedAt:   time.Now().Unix(),
+		UpdatedAt:   time.Now().Unix(),
+		Config:      shared.MountConfig{},
+	}
+	sysMountJSON, err := json.Marshal(sysMount)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+	// check if sys mount exists in mounts bucket
+	sysMnt, err := Store.ReadKey("embargo_mounts", "sys", false)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+	if sysMnt == "" {
+		Store.CreateKey("embargo_mounts", "sys", string(sysMountJSON), false)
+	}
+
+	tokensMount := shared.Mounts{
+		Path:        "tokens",
+		BucketType:  "tokens",
+		Description: "Tokens mount",
+		CreatedAt:   time.Now().Unix(),
+		UpdatedAt:   time.Now().Unix(),
+		Config:      shared.MountConfig{},
+	}
+	tokensMountJSON, err := json.Marshal(tokensMount)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+	// check if tokens mount exists in mounts bucket
+	tokensMnt, err := Store.ReadKey("embargo_mounts", "tokens", false)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+	if tokensMnt == "" {
+		Store.CreateKey("embargo_mounts", "tokens", string(tokensMountJSON), false)
+	}
+
+	policiesMount := shared.Mounts{
+		Path:        "policies",
+		BucketType:  "policies",
+		Description: "Policies mount",
+		CreatedAt:   time.Now().Unix(),
+		UpdatedAt:   time.Now().Unix(),
+		Config:      shared.MountConfig{},
+	}
+	policiesMountJSON, err := json.Marshal(policiesMount)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+	// check if policies mount exists in mounts bucket
+	policiesMnt, err := Store.ReadKey("embargo_mounts", "policies", false)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+	if policiesMnt == "" {
+		Store.CreateKey("embargo_mounts", "policies", string(policiesMountJSON), false)
+	}
+
 }
 
 func GetStore() Storage {

@@ -43,12 +43,12 @@ EMBARGO_CASSANDRA_KEYSPACE - Used only if `EMBARGO_STORAGE_TYPE` is set to `cass
 Path | Methods
 ---- | ----
 **sys endpoints** |
-/sys/init | `GET` `POST`
-/sys/seal-status | `GET`
-/sys/unseal | `POST`
-/sys/mounts | `GET`
-/sys/mounts/:mount | `POST`
-/sys/mounts/:mount/tune | `GET`
+[/sys/init](#post-/sys/init) | `GET` `POST`
+[/sys/seal-status](#get-/sys/seal-status) | `GET`
+[/sys/unseal](#post-/sys/unseal) | `POST`
+[/sys/mounts](#get-/sys/mounts) | `GET`
+[/sys/mounts/:mount](#post-/sys/mounts/:mount) | `POST`
+/sys/mounts/:mount/tune | `GET` `POST`
 **kv endpoints** |
 /kv/:mount/data/:path | `GET` `POST`
 /kv/:mount/delete/:path | `DELETE` `POST`
@@ -61,6 +61,187 @@ Path | Methods
 /auth/token/renew | `POST`
 /auth/token/policies | `GET` `POST`
 /auth/token/policies/:policy | `GET` `DELETE`
+
+
+#### POST /sys/init
+
+Initializes the vault. This will generate a root key and a set of shares. The root key and shares are not stored anywhere. The shares will be provided in the response from /sys/init and should be stored securely.
+
+##### Parameters
+- `secret_shares` `int <required>` - The number of shares to generate. This should be greater than 1.
+- `secret_threshold` `int <required>` - The number of shares needed to unseal the vault. This should be less than or equal to the number of shares.
+##### Request
+```bash
+curl  --header  "Content-Type:application/json" -X  POST \
+--data  '{"secret_shares": 5, "secret_threshold": 2}'  http://127.0.0.1:8080/sys/init
+```
+
+##### Response
+```JSON
+{
+  "message": "The system has been initialized with 5 shares and a threshold of 2. The shares are listed below. Please store them in a safe place. When the system starts, you will need to unseal it with 2 of the 5 shares. The system does not store the shares or the generated root key. Without at least 2 shares, the system cannot be unsealed.",
+  "rootToken": "<root_token>",
+  "shares": [
+    "<share_1>",
+    "<share_2>",
+    "<share_3>",
+    "<share_4>",
+    "<share_5>"
+  ],
+  "threshold": 2
+}
+```
+
+#### GET /sys/init
+
+Returns the status of the vault..
+##### Request
+```bash
+curl  --header  "Content-Type:application/json" -X  GET \
+http://127.0.0.1:8080/sys/init
+```
+
+##### Response
+```JSON
+{"initialized":true}
+```
+
+#### GET /sys/seal-status
+
+Returns the status of the vault.
+##### Request
+```bash
+curl  --header  "Content-Type:application/json" -X  GET \
+http://127.0.0.1:8080/sys/seal-status
+```
+
+##### Response  
+```JSON
+{"sealed":false}
+```
+
+#### POST /sys/unseal
+
+Unseals the vault. This will need to be called with a unique share repeatedly until the threshold is met. The number of shares needed is determined by the number of shares generated during the init call. Once the vault is unsealed, it will remain unsealed until the system is restarted.
+
+If the vault is already unsealed, this call will return an error.
+
+If an invalid share is provided, the process will reset and the share will need to be provided again.
+
+##### Parameters
+- `share` `string <required>` - A share generated during the init process.
+
+##### Request
+```bash
+curl  --header  "Content-Type:application/json" --header  'X-Embargo-Token:<token>' \
+-X  POST --data  '{"share": "<share>"}'  http://127.0.0.1:8080/sys/unseal
+```
+
+##### Response
+```JSON
+{
+    "number": 1,
+    "progress": "1/2",
+    "sealed": true,
+    "threshold": 2
+}
+```
+
+#### GET /sys/mounts
+
+Returns a list of mount points.
+##### Request
+```bash
+curl  --header  "Content-Type:application/json" --header  'X-Embargo-Token:<token>' \
+-X  GET  http://127.0.0.1:8080/sys/mounts
+```
+
+##### Response
+```JSON
+{
+    "data": {
+        "policies/": {
+            "config": {
+                "ttl": "",
+                "max_versions": 0
+            },
+            "created_at": "2023-11-28T23:05:08Z",
+            "description": "Policies mount",
+            "type": "policies",
+            "updated_at": "2023-11-28T23:05:08Z"
+        },
+        "sys/": {
+            "config": {
+                "ttl": "",
+                "max_versions": 0
+            },
+            "created_at": "2023-11-28T23:05:08Z",
+            "description": "System mount",
+            "type": "sys",
+            "updated_at": "2023-11-28T23:05:08Z"
+        },
+        "teststore/": {
+            "config": {
+                "ttl": "0s",
+                "max_versions": 0
+            },
+            "created_at": "2023-11-22T13:15:54Z",
+            "description": "",
+            "type": "kv",
+            "updated_at": "2023-11-22T13:15:54Z"
+        },
+        "tokens/": {
+            "config": {
+                "ttl": "",
+                "max_versions": 0
+            },
+            "created_at": "2023-11-28T23:05:08Z",
+            "description": "Tokens mount",
+            "type": "tokens",
+            "updated_at": "2023-11-28T23:05:08Z"
+        }
+    },
+    "total": 4
+}
+```
+
+#### POST /sys/mounts/:mount
+
+Creates a new mount point. Mount points are used to logically separate secrets. For example, you may want to store secrets for different environments in different mount points.
+
+##### Parameters
+- `mount` `string <required>` - The path to mount the secret at. This should be unique.
+- `type` `string <required>` - The type of mount. Currently only "kv" is supported.
+- `description` `string` - A description of the mount point.
+- `config` `object` - Configuration for the mount point. Currently only "ttl" and "max_versions" are supported.
+- `config.ttl` `string` - The time to live for secrets in the mount point. If not set, secrets will not expire.
+- `config.max_versions` `int` - The maximum number of versions to keep for each secret. If not set, all versions will be kept.
+
+##### Request
+```bash
+curl  --header  "Content-Type:application/json" --header  'X-Embargo-Token:<token>' \
+-X  POST --data  '{"mount": "<mount>", "type": "kv", "description": "<description>", \
+"config": {"ttl": "<ttl>", "max_versions": <max_versions>}}' \
+http://127.0.0.1:8080/sys/mounts/secretstore
+```
+
+##### Response
+```JSON
+{
+    "message": "Mount created",
+    "mount": {
+        "path": "secretstore",
+        "type": "kv",
+        "description": "",
+        "created_at": 1701263823,
+        "updated_at": 1701263823,
+        "Config": {
+            "ttl": "0s",
+            "max_versions": 0
+        }
+    }
+}
+```
 
 
 
@@ -178,63 +359,6 @@ Create a new secret.
 Retrieve a secret. If no version is provided, the latest version will be returned.
 
 
-#### POST /sys/init
-
-Initializes the vault. This will generate a root key and a set of shares. The root key and shares are not stored anywhere. The shares will be provided in the response from /sys/init and should be stored securely.
-
-##### Parameters
-- `secret_shares` `int <required>` - The number of shares to generate. This should be greater than 1.
-- `secret_threshold` `int <required>` - The number of shares needed to unseal the vault. This should be less than or equal to the number of shares.
-##### Request
-```bash
-curl  --header  "Content-Type:application/json" -X  POST \
---data  '{"shares": 5, "threshold": 2}'  http://127.0.0.1:8080/sys/init
-```
-
-##### Response
-```
-{
-  "message": "The system has been initialized with 5 shares and a threshold of 2. The shares are listed below. Please store them in a safe place. When the system starts, you will need to unseal it with 2 of the 5 shares. The system does not store the shares or the generated root key. Without at least 2 shares, the system cannot be unsealed.",
-  "rootToken": "<root_token>",
-  "shares": [
-    "<share_1>",
-    "<share_2>",
-    "<share_3>",
-    "<share_4>",
-    "<share_5>"
-  ],
-  "threshold": 2
-}
-```
-
-#### GET /sys/init
-
-Returns the status of the vault..
-
-
-
-#### GET /sys/seal-status
-
-Returns the status of the vault.
-  
-
-#### POST /sys/unseal
-
-Unseals the vault. This will need to be called with a unique share repeatedly until the threshold is met. The number of shares needed is determined by the number of shares generated during the init call. Once the vault is unsealed, it will remain unsealed until the system is restarted.
-
-If the vault is already unsealed, this call will return an error.
-
-If an invalid share is provided, the process will reset and the share will need to be provided again.
-
-##### Parameters
-- `share` `string <required>` - A share generated during the init process.
-
-##### Request
-```bash
-curl  --header  "Content-Type:application/json" --header  'X-Embargo-Token:<token>' \
--X  POST --data  '{"share": "<share>"}'  http://127.0.0.1:8080/sys/unseal
-```
-  
 
 
 

@@ -8,12 +8,11 @@ package shared
 import "github.com/google/uuid"
 
 type Mounts struct {
-	Path        string
-	Parent      string
-	BucketType  string
-	Description string
-	CreatedAt   int64
-	UpdatedAt   int64
+	Path        string `json:"path"`
+	BucketType  string `json:"type"`
+	Description string `json:"description"`
+	CreatedAt   int64  `json:"created_at"`
+	UpdatedAt   int64  `json:"updated_at"`
 	Config      MountConfig
 }
 
