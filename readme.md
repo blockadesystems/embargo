@@ -43,11 +43,11 @@ EMBARGO_CASSANDRA_KEYSPACE - Used only if `EMBARGO_STORAGE_TYPE` is set to `cass
 Path | Methods
 ---- | ----
 **sys endpoints** |
-[/sys/init](#post-/sys/init) | `GET` `POST`
-[/sys/seal-status](#get-/sys/seal-status) | `GET`
-[/sys/unseal](#post-/sys/unseal) | `POST`
-[/sys/mounts](#get-/sys/mounts) | `GET`
-[/sys/mounts/:mount](#post-/sys/mounts/:mount) | `POST`
+[/sys/init](#post-sysinit) | `GET` `POST`
+[/sys/seal-status](#get-sysseal-status) | `GET`
+[/sys/unseal](#post-sysunseal) | `POST`
+[/sys/mounts](#get-sysmounts) | `GET`
+[/sys/mounts/:mount](#post-sysmountsmount) | `POST`
 /sys/mounts/:mount/tune | `GET` `POST`
 **kv endpoints** |
 /kv/:mount/data/:path | `GET` `POST`
