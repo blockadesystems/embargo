@@ -597,4 +597,44 @@ curl  --header  "Content-Type:application/json"  --header  'X-Embargo-Token:<tok
 }
 ```
 
+#### GET /auth/policies/:policy
 
+Get a policy by ID.
+##### Request
+```bash
+curl  --header  "Content-Type:application/json"  --header  'X-Embargo-Token:<token>' -X  GET  http://127.0.0.1:8080/auth/policies/<policy_id>
+```
+
+##### Response
+```bash
+{
+    "policy_id": "e0ebdfad-2994-4ead-ad6e-aaa67d89c048",
+    "policy_name": "get/post /kv/teststore/",
+    "created_at": "2023-11-30T08:32:33.404649-05:00",
+    "updated_at": "2023-11-30T08:32:33.404649-05:00",
+    "paths": [
+        {
+            "path": "/kv/teststore/",
+            "method": "GET"
+        },
+        {
+            "path": "/kv/teststore/",
+            "method": "POST"
+        }
+    ]
+}
+```
+
+#### DELETE /auth/policies/:policy
+
+Delete a policy by ID.
+
+##### Request
+```bash
+curl  --header  "Content-Type:application/json"  --header  'X-Embargo-Token:<token>' -X  DELETE  http://127.0.0.1:8080/auth/policies/<policy_id>
+```
+
+##### Response
+```bash
+{"message":"policy deleted"}
+```

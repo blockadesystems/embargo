@@ -67,16 +67,16 @@ type EmbargoTokenResponse struct {
 }
 
 type EmbargoPolicy struct {
-	PolicyID   uuid.UUID
-	PolicyName string
-	Created_at time.Time
-	Updated_at time.Time
-	Paths      []PolicyPath
+	PolicyID   uuid.UUID    `json:"policy_id"`
+	PolicyName string       `json:"policy_name"`
+	Created_at time.Time    `json:"created_at"`
+	Updated_at time.Time    `json:"updated_at"`
+	Paths      []PolicyPath `json:"paths"`
 }
 
 type PolicyPath struct {
-	Path   string
-	Method string
+	Path   string `json:"path" validate:"required"`
+	Method string `json:"method" validate:"required"`
 }
 
 type PostedPolicyRequest struct {
