@@ -52,6 +52,26 @@ type SecretMetadataResponse struct {
 	Data shared.SecretMetadata `json:"data" validate:"required"`
 }
 
+type SecretMetadataListResponse struct {
+	Data SecretMetadataListData `json:"data" validate:"required"`
+}
+
+type SecretMetadataListData struct {
+	CreatedAt          string                 `json:"created_at" validate:"required"`
+	CurrentVersion     int64                  `json:"current_version" validate:"required"`
+	DeleteVersionAfter int64                  `json:"delete_version_after" validate:"required"`
+	MaxVersions        int64                  `json:"max_versions" validate:"required"`
+	OldestVersion      int64                  `json:"oldest_version" validate:"required"`
+	CustomMetadata     map[string]string      `json:"custom_metadata" validate:"required"`
+	Versions           map[string]VersionData `json:"versions" validate:"required"`
+}
+
+type VersionData struct {
+	CreatedTime string `json:"created_time" validate:"required"`
+	DeletedTime string `json:"deleted_time" validate:"required"`
+	Destroyed   bool   `json:"destroyed" validate:"required"`
+}
+
 var blockedBuckets = []string{
 	"embargo_sys",
 	"embargo_mounts",
@@ -100,49 +120,6 @@ func fullPathtoMountPath(fullpath string) (string, string, string) {
 	}
 
 	return mount, key, subpath
-
-	// if parts[1] == "data" || parts[1] == "delete" || parts[1] == "undelete" || parts[1] == "destroy" {
-	// 	// :mount/data/:key
-	// 	// :mount/data/:key
-
-	// 	// remove data
-	// 	parts = append(parts[:1], parts[2:]...)
-
-	// }
-	// } else if parts[1] == "metadata" {
-	// 	// :mount/metadata
-	// 	// :mount/metadata/:key
-
-	// 	// remove metadata
-	// 	parts = append(parts[:1], parts[2:]...)
-
-	// 	// if parts len is 1, then the mount is the only part
-	// 	if len(parts) == 1 {
-	// 		mount := parts[0]
-	// 		mountNoSlash := parts[0]
-	// 		key := ""
-	// 		return mount, mountNoSlash, key
-	// 	}
-	// } else if parts[1] == "config" {
-	// 	// :mount/config
-	// 	// remove config
-	// 	parts = append(parts[:1], parts[2:]...)
-	// 	if len(parts) == 1 {
-	// 		mount := parts[0]
-	// 		mountNoSlash := parts[0]
-	// 		key := ""
-	// 		return mount, mountNoSlash, key
-	// 	}
-	// }
-
-	// // the mount is all the parts except the last
-	// mount := strings.Join(parts[:len(parts)-1], "/")
-	// // replace slashes with underscores
-	// mountNoSlash := strings.Replace(mount, "/", "_", -1)
-	// // the key is the last part
-	// key := parts[len(parts)-1]
-	// return mount, mountNoSlash, key
-
 }
 
 func cleanSecret(secret *shared.Secret, mount *shared.Mounts, versions []shared.SecretVersion) []shared.SecretVersion {
@@ -234,11 +211,6 @@ func getVersionsFromSecret(secret *shared.Secret, path string) []shared.SecretVe
 	return versions
 }
 
-// func createSubPath(mount string, path string) error {
-// 	db := storage.GetStore()
-
-// }
-
 //
 // exported functions
 //
@@ -275,6 +247,60 @@ func GetKVConfig(c echo.Context) error {
 	// Put the secret metadata into the response object
 	responseData := new(SecretMetadataResponse)
 	responseData.Data = storedSecret.Metadata
+
+	return c.JSON(http.StatusOK, responseData)
+}
+
+func ListMetadata(c echo.Context) error {
+	logger := c.Get("logger").(*zap.Logger)
+
+	// Get the mount mountNoSlash and key
+	mount, key, subpath := fullPathtoMountPath(c.Request().URL.String())
+
+	// Get and unmarshal the secret
+	storedSecret, err := getUnmarshalSecret(mount, key)
+	if err != nil {
+		logger.Error("failed to unmarshal secret", zap.String("key", mount+"/"+key))
+		return c.JSON(http.StatusInternalServerError, err)
+	}
+	storedSecretString, err := json.Marshal(storedSecret)
+	if err != nil {
+		logger.Error("failed to marshal secret", zap.String("key", mount+"/"+key))
+	}
+	println("storedSecretString: ", string(storedSecretString))
+
+	// Get the correct versions, either subpath or top level
+	path := ""
+	if subpath != "" {
+		path = mount + "/" + key + "/" + subpath
+	} else {
+		path = mount + "/" + key
+	}
+
+	versions := getVersionsFromSecret(storedSecret, path)
+
+	// Build a response data object that contains a list of keys
+	responseData := new(SecretMetadataListResponse)
+	responseData.Data.CreatedAt = time.Unix(storedSecret.Metadata.CreatedAt, 0).UTC().Format(time.RFC3339)
+	responseData.Data.CurrentVersion = versions[len(versions)-1].Metadata.Version
+	responseData.Data.DeleteVersionAfter = storedSecret.Metadata.DeleteVersionAfter
+	responseData.Data.MaxVersions = storedSecret.Metadata.MaxVersions
+	responseData.Data.OldestVersion = versions[0].Metadata.Version
+	responseData.Data.CustomMetadata = storedSecret.Metadata.CustomMetadata
+	responseData.Data.Versions = make(map[string]VersionData)
+
+	for _, v := range versions {
+		tmpObj := new(VersionData)
+		tmpObj.CreatedTime = time.Unix(v.Metadata.CreatedAt, 0).UTC().Format(time.RFC3339)
+		if v.Metadata.DeletionTime == 0 {
+			tmpObj.DeletedTime = ""
+		} else {
+			tmpObj.DeletedTime = time.Unix(v.Metadata.DeletionTime, 0).UTC().Format(time.RFC3339)
+		}
+		tmpObj.Destroyed = v.Metadata.Destroyed
+
+		responseData.Data.Versions[strconv.FormatInt(v.Metadata.Version, 10)] = *tmpObj
+	}
 
 	return c.JSON(http.StatusOK, responseData)
 }
@@ -507,11 +533,6 @@ func GetKV(c echo.Context) error {
 		logger.Error("failed to unmarshal secret", zap.String("key", mount+"/"+key))
 		return c.JSON(http.StatusInternalServerError, err)
 	}
-	storedSecretString, err := json.Marshal(storedSecret)
-	if err != nil {
-		logger.Error("failed to marshal secret", zap.String("key", mount+"/"+key))
-	}
-	println("storedSecretString: ", string(storedSecretString))
 
 	// Get the correct versions, either subpath or top level
 	path := ""

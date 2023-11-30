@@ -22,7 +22,6 @@ var RootKey string
 var EncKeys shared.EncryptionKeyList
 
 func DecryptSecret(ciphertext []byte, keyId uuid.UUID) (string, error) {
-	// key := []byte(RootKey)
 	var key []byte
 
 	// get the key
@@ -36,23 +35,11 @@ func DecryptSecret(ciphertext []byte, keyId uuid.UUID) (string, error) {
 		}
 	}
 
-	// key = []byte(EncKeys.ActiveKey.Key)
-	// if EncKeys.ActiveKey.Id == keyId {
-	// 	key = []byte(EncKeys.ActiveKey.Key)
-	// } else {
-	// 	for _, k := range EncKeys.OldKeys {
-	// 		if k.Id == keyId {
-	// 			key = []byte(k.Key)
-	// 		}
-	// 	}
-	// }
-
 	if key == nil {
 		log.Println("key not found")
 		return "", nil
 	}
 
-	println("key at dec newcipher: ", string(key))
 	c, err := aes.NewCipher(key)
 	if err != nil {
 		log.Println(err)
@@ -91,7 +78,6 @@ func EncryptSecret(secret string) ([]byte, error) {
 
 	plaintext := []byte(secret)
 
-	println("key at enc newcipher: ", string(key))
 	c, err := aes.NewCipher(key)
 	if err != nil {
 		log.Println(err)

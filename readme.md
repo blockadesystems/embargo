@@ -47,20 +47,19 @@ Path | Methods
 [/sys/seal-status](#get-sysseal-status) | `GET`
 [/sys/unseal](#post-sysunseal) | `POST`
 [/sys/mounts](#get-sysmounts) | `GET`
-[/sys/mounts/:mount](#post-sysmountsmount) | `POST`
-/sys/mounts/:mount/tune | `GET` `POST`
+[/sys/mounts/:mount](#get-sysmountsmount) | `GET` `POST`
+[/sys/mounts/:mount/tune](#post-sysmountsmounttune) | `GET` `POST`
 **kv endpoints** |
-/kv/:mount/data/:path | `GET` `POST`
-/kv/:mount/delete/:path | `DELETE` `POST`
-/kv/:mount/undelete/:path | `POST`
-/kv/:mount/destroy/:path | `POST`
-/kv/:mount/metadata | `LIST`
-/kv/:mount/metadata/:path | `LIST`
+[/kv/:mount/data/:path](#get-kvmountdatapath) | `GET` `POST`
+[/kv/:mount/delete/:path](#delete-kvmountdeletepath) | `DELETE` `POST`
+[/kv/:mount/undelete/:path](#post-kvmountundeletepath) | `POST`
+[/kv/:mount/destroy/:path](#post-kvmountdestroypath) | `POST`
+[/kv/:mount/metadata/:path](#list-kvmountmetadatapath) | `LIST`
 **auth endpoints** |
-/auth/token | `POST`
-/auth/token/renew | `POST`
-/auth/token/policies | `GET` `POST`
-/auth/token/policies/:policy | `GET` `DELETE`
+[/auth/token](#post-authtoken) | `POST`
+[/auth/token/renew](#post-authtokenrenew) | `POST`
+[/auth/policies](#get-authtokenpolicies) | `GET` `POST`
+[/auth/policies/:policy](#get-authpoliciespolicy) | `GET` `DELETE`
 
 
 #### POST /sys/init
@@ -129,12 +128,12 @@ If the vault is already unsealed, this call will return an error.
 If an invalid share is provided, the process will reset and the share will need to be provided again.
 
 ##### Parameters
-- `share` `string <required>` - A share generated during the init process.
+- `key` `string <required>` - A share generated during the init process.
 
 ##### Request
 ```bash
 curl  --header  "Content-Type:application/json" --header  'X-Embargo-Token:<token>' \
--X  POST --data  '{"share": "<share>"}'  http://127.0.0.1:8080/sys/unseal
+-X  POST --data  '{"key": "<share>"}'  http://127.0.0.1:8080/sys/unseal
 ```
 
 ##### Response
@@ -205,6 +204,30 @@ curl  --header  "Content-Type:application/json" --header  'X-Embargo-Token:<toke
 }
 ```
 
+#### GET /sys/mounts/:mount
+
+Returns information about a mount point.
+##### Request
+```bash
+curl  --header  "Content-Type:application/json" --header  'X-Embargo-Token:<token>' \
+-X  GET  http://127.0.0.1:8080/sys/mounts/<mount>
+```
+
+##### Response
+```JSON
+{
+    "config": {
+        "ttl": "0s",
+        "max_versions": 0
+    },
+    "created_at": "2023-11-29T14:15:40Z",
+    "description": "",
+    "path": "<mount>",
+    "type": "kv",
+    "updated_at": "2023-11-29T14:15:40Z"
+}
+```
+
 #### POST /sys/mounts/:mount
 
 Creates a new mount point. Mount points are used to logically separate secrets. For example, you may want to store secrets for different environments in different mount points.
@@ -222,7 +245,7 @@ Creates a new mount point. Mount points are used to logically separate secrets. 
 curl  --header  "Content-Type:application/json" --header  'X-Embargo-Token:<token>' \
 -X  POST --data  '{"mount": "<mount>", "type": "kv", "description": "<description>", \
 "config": {"ttl": "<ttl>", "max_versions": <max_versions>}}' \
-http://127.0.0.1:8080/sys/mounts/secretstore
+http://127.0.0.1:8080/sys/mounts/<mount>
 ```
 
 ##### Response
@@ -230,24 +253,293 @@ http://127.0.0.1:8080/sys/mounts/secretstore
 {
     "message": "Mount created",
     "mount": {
-        "path": "secretstore",
-        "type": "kv",
-        "description": "",
-        "created_at": 1701263823,
-        "updated_at": 1701263823,
-        "Config": {
+        "config": {
             "ttl": "0s",
             "max_versions": 0
+        },
+        "created_at": "2023-11-29T14:15:40Z",
+        "description": "",
+        "path": "<mount>",
+        "type": "kv",
+        "updated_at": "2023-11-29T14:15:40Z"
+    }
+}
+```
+
+#### GET /sys/mounts/:mount/tune
+
+Returns information about a mount point.
+
+##### Request
+```bash
+curl  --header  "Content-Type:application/json" --header  'X-Embargo-Token:<token>' \
+-X  GET  http://127.0.0.1:8080/sys/mounts/<mount>/tune
+```
+
+##### Response
+```JSON
+{
+    "ttl": "0s",
+    "max_versions": 0
+}
+```
+
+#### POST /sys/mounts/:mount/tune
+
+Updates the configuration for a mount point.
+
+##### Parameters
+- `mount` `string <required>` - The path to mount the secret at. This should be unique.
+- `ttl` `string` - The time to live for secrets in the mount point. If not set, secrets will not expire.
+- `max_versions` `int` - The maximum number of versions to keep for each secret. If not set, all versions will be kept.
+
+##### Request
+```bash
+curl  --header  "Content-Type:application/json" --header  'X-Embargo-Token:<token>' \
+-X  POST --data  '{"ttl": "<ttl>", "max_versions": <max_versions>}' \
+http://127.0.0.1:8080/sys/mounts/<mount>/tune
+```
+
+##### Response
+Blank response with a 204 status code.
+
+#### GET /kv/:mount/data/:path
+
+Returns the value of a secret.
+
+##### Parameters
+- `mount` `string <required>` - The mount point the secret is stored in.
+- `path` `string <required>` - The path to the secret.
+- `version` `int` - URL parameter to specify the version of the secret to retrieve. If not set, the latest version will be returned.
+
+##### Request
+```bash
+curl  --header  "Content-Type:application/json" --header  'X-Embargo-Token:<token>' \
+-X  GET  http://127.0.0.1:8080/kv/<mount>/data/<path>?version=<version>
+```
+
+##### Response
+```JSON
+{
+    "data": {
+        "data": {
+            "foo": "bar"
+        },
+        "metadata": {
+            "created_time": "2023-11-28T00:05:12Z",
+            "custom_metadata": {},
+            "deletion_time": "",
+            "destroyed": false,
+            "version": 2
         }
     }
 }
 ```
 
+#### POST /kv/:mount/data/:path
+
+Creates a new secret or updates an existing secret.
+
+##### Parameters
+- `mount` `string <required>` - The mount point the secret is stored in.
+- `path` `string <required>` - The path to the secret.
+- `data` `object <required>` - The data to store in the secret.
+- `metadata` `object` - Additional metadata to store with the secret.
+
+##### Request
+```bash
+curl  --header  "Content-Type:application/json" --header  'X-Embargo-Token:<token>' \
+-X  POST --data  '{"data": {"foo": "bar"}, "metadata": {"custom_metadata": {}}}' \
+http://127.0.0.1:8080/kv/<mount>/data/<path>
+```
+
+##### Response
+```JSON
+{
+    "data": {
+        "data": {
+            "foo": "bar"
+        },
+        "metadata": {
+            "created_time": "2023-11-28T00:05:12Z",
+            "custom_metadata": {},
+            "deletion_time": "",
+            "destroyed": false,
+            "version": 2
+        }
+    }
+}
+```
+
+#### DELETE /kv/:mount/delete/:path
+
+Marks a secret as deleted. The secret will not be removed from the database, but it will not be returned in future requests. If the deleted version is specified in a request, it will be returned with a deletion_time set and the data will be blank.
+
+##### Parameters
+- `mount` `string <required>` - The mount point the secret is stored in.
+- `path` `string <required>` - The path to the secret.
+
+##### Request
+```bash
+curl  --header  "Content-Type:application/json" --header  'X-Embargo-Token:<token>' \
+-X  DELETE  http://127.0.0.1:8080/kv/<mount>/delete/<path>
+```
+
+##### Response
+Blank response with a 204 status code.
+
+#### POST /kv/:mount/delete/:path
+
+Marks a secret as deleted. The secret will not be removed from the database, but it will not be returned in future requests. If the deleted version is specified in a request, it will be returned with a deletion_time set and the data will be blank.
+
+##### Parameters
+- `mount` `string <required>` - The mount point the secret is stored in.
+- `path` `string <required>` - The path to the secret.
+- `versions` `array <required>` - An array of versions to delete.
+
+##### Request
+```bash
+curl  --header  "Content-Type:application/json" --header  'X-Embargo-Token:<token>' \
+-X  POST --data  '{"versions": [1, 2]}' \
+http://127.0.0.1:8080/kv/<mount>/delete/<path>
+```
+
+##### Response
+Blank response with a 204 status code.
+
+#### POST /kv/:mount/undelete/:path
+
+Undeletes a secret. The secret will be returned in future requests.
+
+##### Parameters
+- `mount` `string <required>` - The mount point the secret is stored in.
+- `path` `string <required>` - The path to the secret.
+- `versions` `array <required>` - An array of versions to undelete.
+
+##### Request
+```bash
+curl  --header  "Content-Type:application/json" --header  'X-Embargo-Token:<token>' \
+-X  POST --data  '{"versions": [1, 2]}' \
+http://127.0.0.1:8080/kv/<mount>/undelete/<path>
+```
+
+##### Response
+Blank response with a 204 status code.
+
+#### POST /kv/:mount/destroy/:path
+
+Destroys a secret. The version(s) of the secret will be removed from the database.
+
+##### Parameters
+
+- `mount` `string <required>` - The mount point the secret is stored in.
+- `path` `string <required>` - The path to the secret.
+- `versions` `array <required>` - An array of versions to destroy.
+
+##### Request
+```bash
+curl  --header  "Content-Type:application/json" --header  'X-Embargo-Token:<token>' \
+-X  POST --data  '{"versions": [1, 2]}' \
+http://127.0.0.1:8080/kv/<mount>/destroy/<path>
+```
+
+##### Response
+Blank response with a 204 status code.
+
+#### LIST /kv/:mount/metadata/:path
+
+Returns a list of versions for a secret and their metadata.
+
+##### Parameters
+- `mount` `string <required>` - The mount point the secret is stored in.
+- `path` `string <required>` - The path to the secret.
+
+##### Request
+```bash
+curl  --header  "Content-Type:application/json" --header  'X-Embargo-Token:<token>' \
+-X LIST  http://127.0.0.1:8080/kv/<mount>/metadata/<path>
+```
+
+##### Response
+```JSON
+{
+    "data": {
+        "created_at": "2023-11-29T20:07:01Z",
+        "current_version": 1,
+        "delete_version_after": 0,
+        "max_versions": 3,
+        "oldest_version": 1,
+        "custom_metadata": {},
+        "versions": {
+            "1": {
+                "created_time": "2023-11-29T20:07:01Z",
+                "deleted_time": "",
+                "destroyed": false
+            }
+        }
+    }
+}
+```
+
+#### POST /auth/token
+
+Create a new token.
+
+##### Parameters 
+- `display_name` `string` - Display name for token.
+- `ttl` `int` - Minutes until the token expires.  Set to `0` for a non-expiring token.
+- `renewable` `bool` - If the token can be renewed
+- `root` `bool` - If the token is a root token.  Can you be set to true if the requestor is also a root token.
+- `orphan` `bool` - If set to true the token will not have a parent.
+- `policies` `array [string]` - List of policy IDs.
+- `metadata` `object` - Additional data.
 
 
+##### Request
+```bash
+curl  --header  "Content-Type:application/json"  --header 'X-Embargo-Token:<token>' \
+-X  POST --data  '{"display_name":"<name>", "ttl": 0, "renewable": false, \
+"root": false, "orphan": false, "policies": ["<policy_id>"], "metadata": {"foo": "bar"}}' \
+ http://127.0.0.1:8080/auth/token
+```
 
+##### Response
+```JSON
+{
+    "token": "<token>",
+    "display_name": "token1",
+    "created_at": "2023-11-29T19:16:29.230328-05:00",
+    "updated_at": "2023-11-29T19:16:29.230328-05:00",
+    "ttl": 0,
+    "renewable": false,
+    "root": false,
+    "orphan": false,
+    "parent": "<parent_id>",
+    "policies": [
+        "<policy_id>"
+    ],
+    "metadata": null
+}
+```
 
+#### POST /auth/token/renew
 
+Renew a token.
+
+##### Parameters
+- `increment` `int` - Minutes to extend the token's TTL.  Set to `0` to use the token's original TTL.
+
+##### Request
+```bash
+curl  --header  "Content-Type:application/json"  --header 'X-Embargo-Token:<token>' \
+-X  POST --data  '{"increment": 0}' \
+ http://127.0.0.1:8080/auth/token/renew
+```
+
+##### Response
+```JSON
+{"message":"token renewed"}
+```
 
 #### GET /auth/policies
 Get a list of policies.
@@ -304,61 +596,5 @@ curl  --header  "Content-Type:application/json"  --header  'X-Embargo-Token:<tok
     ]  
 }
 ```
-#### POST /auth/token
-Create a new token.
-##### Parameters 
-- `display_name` `string` - Display name for token.
-- `ttl` `int` - Minutes until the token expires.  Set to `0` for a non-expiring token.
-- `renewable` `bool` - If the token can be renewed
-- `root` `bool` - If the token is a root token.  Can you be set to true if the requestor is also a root token.
-- `orphan` `bool` - If set to true the token will not have a parent.
-- `policies` `array [string]` - List of policy IDs.
-- `metadata` `object` - Additional data.
-##### Request
-```bash
-curl  --header  "Content-Type:application/json"  --header 'X-Embargo-Token:<token>' \
--X  POST --data  '{"display_name":"<name>", "ttl": 0, "renewable": false, \
-"root": false, "orphan": false, "policies": ["<policy_id>"], "metadata": {"foo": "bar"}}' \
- http://127.0.0.1:8080/auth/token
-```
-##### Response
-```
-
-```
-
-#### POST /kv/mount/:path
-
-Create a new mount point. Mount points are used to logically separate secrets. For example, you may want to store secrets for different environments in different mount points.
-
-##### Parameters 
-- `path` `string <required>` - Provided in the URI of the request. The path to mount the secret at. This should be unique.
-##### Request
-```bash
-curl  --header  "Content-Type:application/json"  --header  'X-Embargo-Token:<token>' \
--X  POST  http://127.0.0.1:8080/kv/mount/<path>
-```
-
-
-#### GET /kv/mounts/
-
-Returns a list of mount points.
-
-
-  
-
-#### POST /kv/:mount/:path
-
-Create a new secret.
-
-
-
-  
-
-#### GET /kv/:mount/:path?version=1
-
-Retrieve a secret. If no version is provided, the latest version will be returned.
-
-
-
 
 

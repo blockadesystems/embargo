@@ -185,15 +185,16 @@ func main() {
 
 	// System endpoints
 	e.GET("/sys/mounts", sys.Get_mounts)
+	e.GET("/sys/mounts/:mount", sys.GetMount)
 	e.POST("/sys/mounts/:mount", sys.CreateMount)
 	e.GET("/sys/mounts/:mount/tune", sys.GetMountTune)
+	e.POST("/sys/mounts/:mount/tune", sys.PostMountTune)
 	// e.PUT("/sys/mounts/:mount", kvengine.Update_mount)
 	// e.DELETE("/sys/mounts/:mount", kvengine.Delete_mount)
 	// e.POST("/sys/rotate", kvengine.RotateKey)
 
 	// KV Engine
-	e.Add("LIST", "/kv/:mount/metadata", kvengine.ListKeysforMount)
-	e.Add("LIST", "/kv/:mount/metadata/:path", kvengine.ListKeysforMount)
+	e.Add("LIST", "/kv/:mount/metadata/:path", kvengine.ListMetadata)
 	// e.GET("/kv/:mount/config/:path", kvengine.GetKVConfig)
 	// e.POST("/kv/:mount/config", kvengine.PostVConfig)
 	e.GET("/kv/:mount/data/:path", kvengine.GetKV)

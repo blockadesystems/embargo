@@ -53,17 +53,17 @@ type PostedTokenRenewRequest struct {
 }
 
 type EmbargoTokenResponse struct {
-	Token       string `json:"token"`
-	DisplayName string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-	Ttl         int
-	Renewable   bool
-	Root        bool
-	Orphan      bool
-	Parent      uuid.UUID
-	Policies    []uuid.UUID
-	Metadata    map[string]string
+	Token       string            `json:"token"`
+	DisplayName string            `json:"display_name"`
+	CreatedAt   time.Time         `json:"created_at"`
+	UpdatedAt   time.Time         `json:"updated_at"`
+	Ttl         int               `json:"ttl"`
+	Renewable   bool              `json:"renewable"`
+	Root        bool              `json:"root"`
+	Orphan      bool              `json:"orphan"`
+	Parent      uuid.UUID         `json:"parent"`
+	Policies    []uuid.UUID       `json:"policies"`
+	Metadata    map[string]string `json:"metadata"`
 }
 
 type EmbargoPolicy struct {

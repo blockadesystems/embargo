@@ -613,6 +613,44 @@ func Unseal(c echo.Context) error {
 // Mounts
 //
 
+func GetMount(c echo.Context) error {
+	db := storage.GetStore()
+
+	// Get the mount path
+	path := c.Param("mount")
+
+	// Remove trailing slash
+	if path[len(path)-1:] == "/" {
+		path = path[:len(path)-1]
+	}
+
+	// Get the mount from the database
+	mount, err := db.ReadKey("embargo_mounts", path, false)
+	if err != nil {
+		log.Println(err)
+		return c.JSON(http.StatusInternalServerError, err)
+	}
+
+	// Unmarshal the mount
+	var m shared.Mounts
+	err = json.Unmarshal([]byte(mount), &m)
+	if err != nil {
+		log.Println(err)
+		return c.JSON(http.StatusInternalServerError, err)
+	}
+
+	// Create the response data
+	returnData := make(map[string]interface{})
+	returnData["description"] = m.Description
+	returnData["type"] = m.BucketType
+	returnData["path"] = m.Path
+	returnData["config"] = m.Config
+	returnData["created_at"] = time.Unix(m.CreatedAt, 0).UTC().Format(time.RFC3339)
+	returnData["updated_at"] = time.Unix(m.UpdatedAt, 0).UTC().Format(time.RFC3339)
+
+	return c.JSON(http.StatusOK, returnData)
+}
+
 func CreateMount(c echo.Context) error {
 	db := storage.GetStore()
 
@@ -683,9 +721,17 @@ func CreateMount(c echo.Context) error {
 	}
 
 	// Create the response data
+	rMount := make(map[string]interface{})
+	rMount["description"] = mount.Description
+	rMount["type"] = mount.BucketType
+	rMount["path"] = mount.Path
+	rMount["config"] = mount.Config
+	rMount["created_at"] = time.Unix(mount.CreatedAt, 0).UTC().Format(time.RFC3339)
+	rMount["updated_at"] = time.Unix(mount.UpdatedAt, 0).UTC().Format(time.RFC3339)
+
 	returnData := make(map[string]interface{})
 	returnData["message"] = "Mount created"
-	returnData["mount"] = mount
+	returnData["mount"] = rMount
 
 	return c.JSON(http.StatusOK, returnData)
 }
@@ -757,4 +803,62 @@ func GetMountTune(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, returnData)
+}
+
+func PostMountTune(c echo.Context) error {
+	db := storage.GetStore()
+
+	// Get the mount path
+	mountStr := c.Param("mount")
+
+	// Remove trailing slash
+	if mountStr[len(mountStr)-1:] == "/" {
+		mountStr = mountStr[:len(mountStr)-1]
+	}
+
+	// Check if the mount exists
+	mount, _ := db.ReadKey("embargo_mounts", mountStr, false)
+	if mount == "" {
+		return c.JSON(http.StatusBadRequest, "mount does not exist")
+	}
+
+	// Get the request data
+	r := new(PostedMountOptions)
+	if err := c.Bind(r); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+
+	// Get the mount config
+	var m shared.Mounts
+	err := json.Unmarshal([]byte(mount), &m)
+	if err != nil {
+		log.Println(err)
+		return c.JSON(http.StatusInternalServerError, err)
+	}
+
+	// Need to validate config or set defaults
+	if r.MaxVersions == 0 {
+		r.MaxVersions = 0
+	}
+
+	// Update the mount config
+	m.Config.MaxVersions = int64(r.MaxVersions)
+	m.Config.Ttl = r.DeleteVersionAfter
+
+	// Store the mount in the embargo_mounts bucket
+	mountJSON, err := json.Marshal(m)
+	if err != nil {
+		log.Println("Error marshalling mount", err)
+		return c.JSON(http.StatusInternalServerError, err)
+	}
+
+	err = db.UpdateKey("embargo_mounts", mountStr, string(mountJSON))
+	if err != nil {
+		log.Println("Error updating mount", err)
+		return c.JSON(http.StatusInternalServerError, err)
+	}
+
+	// Send a blank response
+	return c.JSON(http.StatusOK, "")
+
 }
