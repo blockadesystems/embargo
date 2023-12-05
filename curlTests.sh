@@ -1,5 +1,5 @@
 # Init the system
-curl --header "Content-Type:application/json" --request POST --data '{"secret_shares":5, "secret_threshold":2}' http://127.0.0.1:8080/sys/init | jq --indent 4
+curl --header "Content-Type:application/json" --request POST --data '{"shares":5, "threshold":2}' http://127.0.0.1:8080/sys/init | jq --indent 4
 
 # Unseal the system
 curl --header "Content-Type:application/json" --request POST --data '{"key":"<key1>"}' http://127.0.0.1:8080/sys/unseal | jq --indent 4

@@ -30,11 +30,11 @@ type EncryptedSecret struct {
 }
 
 func InitDB(dbType string) {
+	println("Initializing database")
 	var err error
 
 	switch dbType {
 	case "memory":
-		println("Using memory storage")
 		Store = BoltStorage{}
 		Store, err = Store.OpenDB()
 		if err != nil {
@@ -51,16 +51,19 @@ func InitDB(dbType string) {
 		Store.CreateBucket("embargo_tokens")
 		Store.CreateBucket("embargo_policies")
 	case "cassandra":
+		println("Initializing Cassandra")
 		Store = CassandraStorage{}
 		Store, err = Store.OpenDB()
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)
 		}
+		println("Creating buckets")
 		Store.CreateBucket("embargo_mounts")
 		Store.CreateBucket("embargo_sys")
 		Store.CreateBucket("embargo_tokens")
 		Store.CreateBucket("embargo_policies")
+		println("Buckets created")
 	}
 
 	// Add sys, tokens, and policies mounts if they don't exist
@@ -74,18 +77,16 @@ func InitDB(dbType string) {
 	}
 	sysMountJSON, err := json.Marshal(sysMount)
 	if err != nil {
+		println("error marshalling sys mount")
 		fmt.Println(err)
 		os.Exit(1)
 	}
 	// check if sys mount exists in mounts bucket
-	sysMnt, err := Store.ReadKey("embargo_mounts", "sys", false)
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
+	sysMnt, _ := Store.ReadKey("embargo_mounts", "sys", false)
 	if sysMnt == "" {
 		Store.CreateKey("embargo_mounts", "sys", string(sysMountJSON), false)
 	}
+	println("sys mount created")
 
 	tokensMount := shared.Mounts{
 		Path:        "tokens",
@@ -101,14 +102,12 @@ func InitDB(dbType string) {
 		os.Exit(1)
 	}
 	// check if tokens mount exists in mounts bucket
-	tokensMnt, err := Store.ReadKey("embargo_mounts", "tokens", false)
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
+	tokensMnt, _ := Store.ReadKey("embargo_mounts", "tokens", false)
+
 	if tokensMnt == "" {
 		Store.CreateKey("embargo_mounts", "tokens", string(tokensMountJSON), false)
 	}
+	println("tokens mount created")
 
 	policiesMount := shared.Mounts{
 		Path:        "policies",
@@ -124,14 +123,14 @@ func InitDB(dbType string) {
 		os.Exit(1)
 	}
 	// check if policies mount exists in mounts bucket
-	policiesMnt, err := Store.ReadKey("embargo_mounts", "policies", false)
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
+	policiesMnt, _ := Store.ReadKey("embargo_mounts", "policies", false)
+
 	if policiesMnt == "" {
 		Store.CreateKey("embargo_mounts", "policies", string(policiesMountJSON), false)
 	}
+	println("policies mount created")
+
+	println("Database initialized")
 
 }
 

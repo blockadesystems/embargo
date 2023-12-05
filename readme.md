@@ -49,6 +49,8 @@ Path | Methods
 [/sys/mounts](#get-sysmounts) | `GET`
 [/sys/mounts/:mount](#get-sysmountsmount) | `GET` `POST`
 [/sys/mounts/:mount/tune](#post-sysmountsmounttune) | `GET` `POST`
+[/sys/rekey/init](#get-sysrekeyinit) | `GET` `POST` `DELETE`
+[/sys/rekey/update](#post-sysrekeyupdate) | `POST`
 **kv endpoints** |
 [/kv/:mount/data/:path](#get-kvmountdatapath) | `GET` `POST`
 [/kv/:mount/delete/:path](#delete-kvmountdeletepath) | `DELETE` `POST`
@@ -67,12 +69,12 @@ Path | Methods
 Initializes the vault. This will generate a root key and a set of shares. The root key and shares are not stored anywhere. The shares will be provided in the response from /sys/init and should be stored securely.
 
 ##### Parameters
-- `secret_shares` `int <required>` - The number of shares to generate. This should be greater than 1.
-- `secret_threshold` `int <required>` - The number of shares needed to unseal the vault. This should be less than or equal to the number of shares.
+- `shares` `int <required>` - The number of shares to generate. This should be greater than 1.
+- `threshold` `int <required>` - The number of shares needed to unseal the vault. This should be less than or equal to the number of shares.
 ##### Request
 ```bash
 curl  --header  "Content-Type:application/json" -X  POST \
---data  '{"secret_shares": 5, "secret_threshold": 2}'  http://127.0.0.1:8080/sys/init
+--data  '{"shares": 5, "threshold": 2}'  http://127.0.0.1:8080/sys/init
 ```
 
 ##### Response
@@ -302,6 +304,90 @@ http://127.0.0.1:8080/sys/mounts/<mount>/tune
 
 ##### Response
 Blank response with a 204 status code.
+
+#### GET /sys/rekey/init
+
+Get the status of the rekey process.
+
+##### Request
+```bash
+curl  --header  "Content-Type:application/json" --header  'X-Embargo-Token:<token>' -X  GET  http://127.0.0.1:8080/sys/rekey/init
+```
+
+##### Response
+```JSON
+{
+    "nonce": "fc2dbf91-4e8c-4565-963b-1482235d8529",
+    "progress": 0,
+    "required": 2,
+    "shares": 5,
+    "started": true,
+    "threshold": 2
+}
+```
+
+#### POST /sys/rekey/init
+
+Starts the rekey process. The rekey process will generate a new root key and a new set of shares. The system will be rekeyed once the threshold number of shares have been provided to the /sys/rekey/update endpoint.
+
+##### Parameters
+- `shares` `int <required>` - The number of shares to generate. This should be greater than 1.
+- `threshold` `int <required>` - The number of shares needed to unseal the vault. This should be less than or equal to the number of shares.
+
+##### Request
+```bash
+curl  --header  "Content-Type:application/json" --header  'X-Embargo-Token:<token>' -X  POST --data  '{"shares": 5, "threshold": 2}'  http://127.0.0.1:8080/sys/rekey/init
+```
+
+##### Response
+```JSON
+{
+    "nonce": "fc2dbf91-4e8c-4565-963b-1482235d8529",
+    "progress": 0,
+    "required": 2,
+    "shares": 5,
+    "started": true,
+    "threshold": 2
+}
+```
+
+#### DELETE /sys/rekey/init
+
+Cancels the rekey process.
+
+##### Request
+```bash
+curl  --header  "Content-Type:application/json" --header  'X-Embargo-Token:<token>' -X  DELETE  http://127.0.0.1:8080/sys/rekey/init
+```
+
+##### Response
+```JSON
+{"message":"rekey canceled"}
+```
+
+#### POST /sys/rekey/update
+
+Updates the rekey process. This should be called with a unique share repeatedly until the threshold is met. The number of shares needed is determined by the number of shares generated during the init call. Once the threshold is met, the system will be rekeyed.
+
+##### Parameters
+- `key` `string <required>` - A share generated during the init process.
+- `nonce` `string <required>` - The nonce returned from the /sys/rekey/init endpoint.
+
+##### Request
+```bash
+curl  --header  "Content-Type:application/json" --header  'X-Embargo-Token:<token>' -X  POST --data  '{"key": "<share>", "nonce": "<nonce>"}'  http://127.0.0.1:8080/sys/rekey/update
+```
+
+##### Response
+```JSON
+{
+    "progress": 1,
+    "required": 2,
+    "shares": 5,
+    "started": true,
+    "threshold": 2
+}
+```
 
 #### GET /kv/:mount/data/:path
 
