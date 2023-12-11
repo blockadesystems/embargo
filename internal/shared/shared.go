@@ -64,3 +64,28 @@ type Secret struct {
 	Metadata SecretMetadata `json:"metadata" validate:"required"`
 	Paths    []Paths        `json:"paths" validate:"required"`
 }
+
+type InitSysRequest struct {
+	Threshold int `json:"threshold"`
+	Shares    int `json:"shares"`
+}
+
+type InitSysResponse struct {
+	Shares    []string `json:"shares"`
+	RootToken string   `json:"root_token"`
+}
+
+type KvResponse struct {
+	Data KvResponseData `json:"data" validate:"required"`
+}
+
+type KvResponseData struct {
+	Data     interface{} `json:"data" validate:"required"`
+	Metadata struct {
+		CreatedTime    string            `json:"created_time" validate:"required"`
+		CustomMetadata map[string]string `json:"custom_metadata" validate:"required"`
+		DeletionTime   string            `json:"deletion_time" validate:"required"`
+		Destroyed      bool              `json:"destroyed" validate:"required"`
+		Version        int64             `json:"version" validate:"required"`
+	} `json:"metadata" validate:"required"`
+}

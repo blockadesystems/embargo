@@ -1,9 +1,4 @@
-/*
- * This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at https://mozilla.org/MPL/2.0/.
- */
-package main
+package server
 
 import (
 	"net/http"
@@ -11,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/blockadesystems/embargo/internal/kvengine"
+	"github.com/blockadesystems/embargo/internal/shared"
 	"github.com/blockadesystems/embargo/internal/storage"
 	"github.com/blockadesystems/embargo/internal/sys"
 	"github.com/blockadesystems/embargo/internal/tokenauth"
@@ -91,7 +87,7 @@ func createLogger(logLevel string) *zap.Logger {
 	return zap.Must(config.Build())
 }
 
-func main() {
+func StartServer(devMode bool) {
 	// Set up logger
 	logLevel := os.Getenv("EMBARGO_LOG_LEVEL")
 	if logLevel == "" {
@@ -107,8 +103,45 @@ func main() {
 		storageType = "memory"
 	}
 
-	storage.InitDB(storageType)
-	sys.StartSys()
+	// iIf devMode is true, configure Embargo to run in development mode
+	if devMode {
+		storageType = "memory"
+		logger.Info("Running in development mode")
+		os.Setenv("EMBARGO_FILE", "embargodev.db")
+
+		// Remove the database file if it exists
+		if _, err := os.Stat("embargodev.db"); err == nil {
+			logger.Info("Removing existing database file")
+			err := os.Remove("embargodev.db")
+			if err != nil {
+				logger.Error("error removing database file", zap.Error(err))
+			}
+		}
+
+		storage.InitDB(storageType)
+		sys.StartSys()
+		var r shared.InitSysRequest
+		r.Shares = 2
+		r.Threshold = 2
+		res, err := sys.InitSys(r)
+		if err != nil {
+			logger.Error("error initializing system", zap.Error(err))
+		}
+
+		// set EMBARGO_AUTO_UNSEAL to true and set the unseal keys
+		os.Setenv("EMBARGO_AUTO_UNSEAL", "true")
+		os.Setenv("EMBARGO_UNSEAL_KEYS", res.Shares[0]+","+res.Shares[1])
+
+		sys.StartSys()
+
+		message := `Embargo is running in development mode.
+		The database file is embargodev.db and will be removed the next time you start Embargo in dev mode.
+		To access the server, use the following token: ` + res.RootToken
+		println(message)
+	} else {
+		storage.InitDB(storageType)
+		sys.StartSys()
+	}
 
 	e := echo.New()
 	e.HideBanner = true
@@ -165,7 +198,7 @@ func main() {
 	})
 
 	e.GET("/sys/init", sys.InitStatus)
-	e.POST("/sys/init", sys.InitSys)
+	e.POST("/sys/init", sys.InitSysPost)
 	e.GET("/sys/seal-status", sys.GetSealStatus)
 	e.POST("/sys/unseal", sys.Unseal)
 
