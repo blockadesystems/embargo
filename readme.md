@@ -15,6 +15,32 @@ When first started a call to /sys/init is needed to initialize the vault. This w
 
 Once the system is initialized, the vault will be sealed. This means that the vault is encrypted and cannot be accessed. To unseal the vault, a call to /sys/unseal is needed. This call will require a number of shares to be provided. The number of shares needed is determined by the number of shares generated during the init call. Once the vault is unsealed, it will remain unsealed until the system is restarted.
 
+## Running
+
+### Docker
+
+The easiest way to run Embargo is using Docker. The following command will run Embargo using an in-memory database.
+
+```bash
+docker run -p 8080:8080 -e EMBARGO_AUTO_UNSEAL=true -e EMBARGO_AUTO_UNSEAL_KEYS=<share_1>,<share_2>,<share_3> embargo
+```
+
+The following command will run Embargo using Cassandra.
+
+```bash
+docker run -p 8080:8080 -e EMBARGO_STORAGE_TYPE=cassandra -e EMBARGO_CASSANDRA_HOSTS=<cassandra_host_1>,<cassandra_host_2> -e EMBARGO_CASSANDRA_USERNAME=<username> -e EMBARGO_CASSANDRA_PASSWORD=<password> embargo
+```
+
+### Binary
+
+To run Embargo without Docker, download the latest release from the releases page. The following command will run Embargo using an in-memory database. The binary will be configured using environment variables.
+
+```bash
+
+```bash
+./embargo server
+```
+
 ## Configuration
 
 Embargo can be configured using environment variables. The following variables are supported:
@@ -30,6 +56,8 @@ EMBARGO_AUTO_UNSEAL_KEYS - A comma separated list of keys to use to unseal the v
 EMBARGO_LOG_LEVEL - The log level to use. If not set it defaults to "info". Valid options are "debug", "info", "warn", "error", "fatal", and "panic".
 
 EMBARGO_STORAGE_TYPE - The type of storage to use. Currently options are "memory" and "cassandra". If not set, "memory" will be used. If "memory" is used only one instance of the Embargo can be run. If "cassandra" is used, multiple instances of the Embargo can be run.
+
+EMBARGO_FILE - Used only if `EMBARGO_STORAGE_TYPE` is set to `memory`. The file to use to store the data. If not set it defaults to `embargo.db`
 
 EMBARGO_CASSANDRA_HOSTS - Used only if `EMBARGO_STORAGE_TYPE` is set to `cassandra`. Comma separated list of IP address for the Cassandra servers.
 

@@ -205,7 +205,11 @@ func decryptSecret(value string) string {
 
 func (b BoltStorage) OpenDB() (Storage, error) {
 	var err error
-	b.Db, err = bolt.Open("srevault.db", 0600, nil)
+	embargoFile := os.Getenv("EMBARGO_FILE")
+	if embargoFile == "" {
+		embargoFile = "embargo.db"
+	}
+	b.Db, err = bolt.Open(embargoFile, 0600, nil)
 	if err != nil {
 		return nil, err
 	}

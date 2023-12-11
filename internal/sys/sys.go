@@ -8,6 +8,7 @@ package sys
 import (
 	b64 "encoding/base64"
 	"encoding/json"
+	"errors"
 	"log"
 	"math/rand"
 	"net/http"
@@ -26,11 +27,6 @@ import (
 	"github.com/labstack/echo/v4"
 	"golang.org/x/crypto/bcrypt"
 )
-
-type InitSysRequest struct {
-	Threshold int `json:"threshold"`
-	Shares    int `json:"shares"`
-}
 
 type UnsealData struct {
 	Threshold int
@@ -220,41 +216,21 @@ func InitStatus(c echo.Context) error {
 	return c.JSON(http.StatusOK, returnData)
 }
 
-func InitSys(c echo.Context) error {
-	// secret_shares and secret_threshold are required
-	// secret_shares must be greater than or equal to secret_threshold
-
+func InitSys(r shared.InitSysRequest) (shared.InitSysResponse, error) {
 	db := storage.GetStore()
+	var res shared.InitSysResponse
 
 	// Check if the system has already been initialized. If so, return an error
 	i, err := db.ReadKey("embargo_sys", "initialized", false)
 	if err != nil {
-		log.Println("Error reading initialized key", err)
-		panic(err)
+		return res, err
 	}
 	initialized, err := strconv.ParseBool(i)
 	if err != nil {
-		log.Println("Error reading initialized key", err)
-		panic(err)
+		return res, err
 	}
 	if initialized {
-		return c.JSON(http.StatusBadRequest, "system already initialized")
-	}
-
-	// Get the request data
-	r := new(InitSysRequest)
-	if err := c.Bind(r); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
-	}
-
-	if r.Threshold == 0 {
-		return c.JSON(http.StatusBadRequest, "secret_threshold required and must be greater than 0")
-	}
-	if r.Shares == 0 {
-		return c.JSON(http.StatusBadRequest, "secret_shares required and must be greater than 0")
-	}
-	if r.Shares < r.Threshold {
-		return c.JSON(http.StatusBadRequest, "secret_shares must be greater than or equal to secret_threshold")
+		return res, errors.New("system already initialized")
 	}
 
 	// Set the unseal data and update the database
@@ -357,12 +333,43 @@ func InitSys(c echo.Context) error {
 	encryption.EncKeys = shared.EncryptionKeyList{}
 
 	// Create the response data
+	res.Shares = encodedShares
+	res.RootToken = key
+
+	return res, nil
+}
+
+func InitSysPost(c echo.Context) error {
+	// secret_shares and secret_threshold are required
+	// secret_shares must be greater than or equal to secret_threshold
+
+	// Get the request data
+	r := new(shared.InitSysRequest)
+	if err := c.Bind(r); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+
+	if r.Threshold == 0 {
+		return c.JSON(http.StatusBadRequest, "secret_threshold required and must be greater than 0")
+	}
+	if r.Shares == 0 {
+		return c.JSON(http.StatusBadRequest, "secret_shares required and must be greater than 0")
+	}
+	if r.Shares < r.Threshold {
+		return c.JSON(http.StatusBadRequest, "secret_shares must be greater than or equal to secret_threshold")
+	}
+
+	// Process the request
+	res, err := InitSys(*r)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, err.Error())
+	}
+
 	returnData := make(map[string]interface{})
 	returnData["message"] = "The system has been initialized with " + strconv.Itoa(r.Shares) + " shares and a threshold of " + strconv.Itoa(r.Threshold) + ". The shares are listed below. Please store them in a safe place. When the system starts, you will need to unseal it with " + strconv.Itoa(r.Threshold) + " of the " + strconv.Itoa(r.Shares) + " shares. The system does not store the shares or the generated root key. Without at least " + strconv.Itoa(r.Threshold) + " shares, the system cannot be unsealed."
 	returnData["threshold"] = r.Threshold
-	returnData["shares"] = encodedShares
-	// returnData["jwt_secret_key"] = JwtSecretKey
-	returnData["rootToken"] = key
+	returnData["shares"] = res.Shares
+	returnData["rootToken"] = res.RootToken
 
 	return c.JSON(http.StatusOK, returnData)
 }
@@ -690,7 +697,7 @@ func RekeyInitPost(c echo.Context) error {
 	}
 
 	// Get the request data
-	rq := new(InitSysRequest)
+	rq := new(shared.InitSysRequest)
 	if err := c.Bind(rq); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
