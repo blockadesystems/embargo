@@ -9,7 +9,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 RUN chmod +x generate-sha.sh && ./generate-sha.sh
-RUN CGO_ENABLED=0 GOOS=linux go build /app/cmd/embargo
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o embargo .
 
 # FROM registry.access.redhat.com/ubi8/ubi-micro
 FROM gcr.io/distroless/static AS final
