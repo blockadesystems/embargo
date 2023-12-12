@@ -153,6 +153,8 @@ func StartServer(devMode bool) {
 
 	println(newBanner)
 
+	e.Use(middleware.Recover())
+
 	// Logger middleware
 	e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
 		LogURI:    true,
@@ -257,6 +259,25 @@ func StartServer(devMode bool) {
 	if port == "" {
 		port = "8080"
 	}
-	e.Logger.Fatal(e.Start(address + ":" + port))
+
+	tlsDisableTxt := os.Getenv("EMBARGO_TLS_DISABLE")
+	if tlsDisableTxt == "" {
+		tlsDisableTxt = "false"
+	}
+	tlsDisable, _ := strconv.ParseBool(tlsDisableTxt)
+
+	if tlsDisable {
+		tlsWarning := "WARNING: EMBARGO_TLS_DISABLED is set to true. This is not recommended for production use."
+		println(tlsWarning)
+		e.Logger.Fatal(e.Start(address + ":" + port))
+	} else {
+		crtFile := os.Getenv("EMBARGO_TLS_CERT_FILE")
+		keyFile := os.Getenv("EMBARGO_TLS_KEY_FILE")
+		if crtFile == "" || keyFile == "" {
+			logger.Fatal("EMBARGO_TLS_CERT_FILE and EMBARGO_TLS_KEY_FILE must be set if EMBARGO_TLS_DISABLED is false")
+		} else {
+			e.Logger.Fatal(e.StartTLS(address+":"+port, crtFile, keyFile))
+		}
+	}
 
 }
