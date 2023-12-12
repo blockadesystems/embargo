@@ -49,6 +49,12 @@ EMBARGO_ADDRESS - Address the Embargo server will listen on. If not set it defau
 
 EMBARGO_PORT - The port the Embargo server will listen on. If not set it defaults to 8080.
 
+EMBARGO_TLS_DISABLE - If set to true, TLS will be disabled. If not set, TLS will be enabled. If TLS is enabled, EMBARGO_TLS_CERT_FILE and EMBARGO_TLS_KEY_FILE must be set. If EMBARGO_TLS_DISABLE is not set, it is defaulted to false.
+
+EMBARGO_TLS_CERT_FILE - The path to the TLS certificate file. This is only used if TLS is enabled.
+
+EMBARGO_TLS_KEY_FILE - The path to the TLS key file. This is only used if TLS is enabled.
+
 EMBARGO_AUTO_UNSEAL - If set to true, the vault will automatically unseal itself on startup. This is useful for testing. If not set, the vault will need to be unsealed manually.
 
 EMBARGO_AUTO_UNSEAL_KEYS - A comma separated list of keys to use to unseal the vault. This is only used if VAULT_AUTO_UNSEAL is set to true.
