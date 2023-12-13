@@ -108,6 +108,7 @@ func StartServer(devMode bool) {
 		storageType = "memory"
 		logger.Info("Running in development mode")
 		os.Setenv("EMBARGO_FILE", "embargodev.db")
+		os.Setenv("EMBARGO_TLS_DISABLE", "true")
 
 		// Remove the database file if it exists
 		if _, err := os.Stat("embargodev.db"); err == nil {
