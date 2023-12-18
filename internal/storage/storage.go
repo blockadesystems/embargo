@@ -15,10 +15,11 @@ import (
 	"github.com/blockadesystems/embargo/internal/encryption"
 	"github.com/blockadesystems/embargo/internal/shared"
 
-	// "github.com/blockadesystems/embargo/internal/shared"
 	"github.com/boltdb/bolt"
 	"github.com/gocql/gocql"
 	"github.com/google/uuid"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
 var Store Storage
@@ -53,6 +54,20 @@ func InitDB(dbType string) {
 	case "cassandra":
 		println("Initializing Cassandra")
 		Store = CassandraStorage{}
+		Store, err = Store.OpenDB()
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+		println("Creating buckets")
+		Store.CreateBucket("embargo_mounts")
+		Store.CreateBucket("embargo_sys")
+		Store.CreateBucket("embargo_tokens")
+		Store.CreateBucket("embargo_policies")
+		println("Buckets created")
+	case "postgres":
+		println("Initializing Postgres")
+		Store = PostgresStorage{}
 		Store, err = Store.OpenDB()
 		if err != nil {
 			fmt.Println(err)
@@ -367,40 +382,6 @@ func (b BoltStorage) BucketExists(bucket string) bool {
 	return exists
 }
 
-// func (b BoltStorage) GetMountChildren(bucket string, key string) ([]string, error) {
-// 	var children []string
-// 	err := b.Db.View(func(tx *bolt.Tx) error {
-// 		mounts_bucket := tx.Bucket([]byte("embargo_mounts"))
-// 		// catch panic here if bucket doesn't exist
-// 		if mounts_bucket == nil {
-// 			return fmt.Errorf("bucket does not exist")
-// 		}
-
-// 		// get the value of the key
-// 		v := mounts_bucket.Get([]byte(key))
-// 		if v == nil {
-// 			return fmt.Errorf("key does not exist")
-// 		}
-
-// 		// unmarshal the json into a Secret struct
-// 		secret := shared.Secret{}
-// 		err := json.Unmarshal(v, &secret)
-// 		if err != nil {
-// 			return fmt.Errorf("error unmarshalling json")
-// 		}
-
-// 		// build a list of children from the secret subpaths
-// 		for _, subpath := range secret.Subpaths {
-// 			children = append(children, subpath.Path)
-// 		}
-// 		return nil
-// 	})
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	return children, nil
-// }
-
 // Cassandra
 func (c CassandraStorage) OpenDB() (Storage, error) {
 	var err error
@@ -538,25 +519,129 @@ func (c CassandraStorage) BucketExists(bucket string) bool {
 	return exists
 }
 
-// func (c CassandraStorage) GetMountChildren(bucket string, key string) ([]string, error) {
-// 	var children []string
-// 	var value string
-// 	err := c.Db.Query("SELECT value FROM "+Keyspace+".embargo_mounts WHERE key = ?", key).Scan(&value)
-// 	if err != nil {
-// 		return nil, err
-// 	}
+// Postgres
+type PostgresStorage struct {
+	Db *gorm.DB
+}
 
-// 	// unmarshal the json into a Secret struct
-// 	secret := shared.Secret{}
-// 	err = json.Unmarshal([]byte(value), &secret)
-// 	if err != nil {
-// 		return nil, err
-// 	}
+func (p PostgresStorage) OpenDB() (Storage, error) {
+	var err error
+	// Get Postgres host from environment
+	postgresHost := os.Getenv("EMBARGO_POSTGRES_HOST")
+	if postgresHost == "" {
+		panic("EMBARGO_POSTGRES_HOST environment variable not set")
+	}
 
-// 	// build a list of children from the secret subpaths
-// 	for _, subpath := range secret.Subpaths {
-// 		children = append(children, subpath.Path)
-// 	}
+	// Get Postgres username from environment
+	postgresUsername := os.Getenv("EMBARGO_POSTGRES_USERNAME")
+	if postgresUsername == "" {
+		panic("EMBARGO_POSTGRES_USERNAME environment variable not set")
+	}
 
-// 	return children, nil
-// }
+	// Get Postgres password from environment
+	postgresPassword := os.Getenv("EMBARGO_POSTGRES_PASSWORD")
+	if postgresPassword == "" {
+		panic("EMBARGO_POSTGRES_PASSWORD environment variable not set")
+	}
+
+	// Get Postgres port from environment
+	postgresPort := os.Getenv("EMBARGO_POSTGRES_PORT")
+	if postgresPort == "" {
+		postgresPort = "5432"
+	}
+
+	// Get Postgres database from environment
+	postgresDatabase := os.Getenv("EMBARGO_POSTGRES_DATABASE")
+	if postgresDatabase == "" {
+		postgresDatabase = "embargo"
+	}
+
+	dsn := "host=" + postgresHost + " user=" + postgresUsername + " password=" + postgresPassword + " dbname=" + postgresDatabase + " port=" + postgresPort + " sslmode=disable TimeZone=UTC"
+	p.Db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	if err != nil {
+		return nil, err
+	}
+
+	return p, nil
+}
+
+func (p PostgresStorage) CreateBucket(bucket string) error {
+	err := p.Db.Exec("CREATE TABLE IF NOT EXISTS " + bucket +
+		" (key text PRIMARY KEY, value text);").Error
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (p PostgresStorage) CreateKey(bucket string, key string, value string, encrypt bool) error {
+	if encrypt {
+		value = encryptSecret(value)
+	}
+	err := p.Db.Exec("INSERT INTO "+bucket+" (key, value) VALUES (?, ?)", key, value).Error
+	if err != nil {
+		println("error inserting key")
+		return err
+	}
+
+	return nil
+}
+
+func (p PostgresStorage) ReadAllKeys(bucket string) (map[string]string, error) {
+	keys := make(map[string]string)
+
+	data := p.Db.Raw("SELECT * FROM " + bucket).Find(&keys)
+	if data.Error != nil {
+		return nil, data.Error
+	}
+
+	return keys, nil
+}
+
+func (p PostgresStorage) ReadKey(bucket string, key string, encrypted bool) (string, error) {
+	var value string
+	data := p.Db.Raw("SELECT value FROM "+bucket+" WHERE key = ?", key).Scan(&value)
+	if data.Error != nil {
+		return "", data.Error
+	}
+
+	if encrypted {
+		value = decryptSecret(value)
+	}
+
+	return value, nil
+}
+
+func (p PostgresStorage) UpdateKey(bucket string, key string, value string) error {
+	err := p.Db.Exec("UPDATE "+bucket+" SET value = ? WHERE key = ?", value, key).Error
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (p PostgresStorage) DeleteKey(bucket string, key string) error {
+	err := p.Db.Exec("DELETE FROM "+bucket+" WHERE key = ?", key).Error
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (p PostgresStorage) DeleteBucket(bucket string) error {
+	err := p.Db.Exec("DROP TABLE " + bucket).Error
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (p PostgresStorage) BucketExists(bucket string) bool {
+	var exists bool
+	data := p.Db.Raw("SELECT * FROM information_schema.tables WHERE table_schema = 'public' AND table_name = ?", bucket).Scan(&exists)
+	if data.Error != nil {
+		return false
+	}
+	return exists
+}

@@ -4,7 +4,7 @@
 
 The project is still in the early stages of development and is not ready for production use.
 
-This is a simple secrets storage system. It is built using Golang. The data in Embargo is encrypted using AES-256-GCM encryption. The API is not compatible with any other system, though it is inspired by existing systems. The database layer is abstracted in such a way that other databases can be used in the future. Today Cassandra and in-memory databases are supported.  If in-memory is used, only one instance of the Embargo can be run. If Cassandra is used, multiple instances of the Embargo can be run.
+This is a simple secrets storage system. It is built using Golang. The data in Embargo is encrypted using AES-256-GCM encryption. The API is not compatible with any other system, though it is inspired by existing systems. The database layer is abstracted in such a way that other databases can be used in the future. Today Cassandra, Postgresql and in-memory databases are supported.  If in-memory is used, only one instance of the Embargo can be run. If Cassandra is used, multiple instances of the Embargo can be run.
 
 
 ## Usage
@@ -72,6 +72,18 @@ EMBARGO_CASSANDRA_USERNAME - Used only if `EMBARGO_STORAGE_TYPE` is set to `cass
 EMBARGO_CASSANDRA_PASSWORD - Used only if `EMBARGO_STORAGE_TYPE` is set to `cassandra`. Password used to connect to the Cassandra servers.
 
 EMBARGO_CASSANDRA_KEYSPACE - Used only if `EMBARGO_STORAGE_TYPE` is set to `cassandra`. Keyspace to use in Cassandra. If not set it will default to `embargo`
+
+EMBARGO_POSTGRES_HOST - Used only if `EMBARGO_STORAGE_TYPE` is set to `postgres`. IP address for the Postgres server.
+
+EMBARGO_POSTGRES_PORT - Used only if `EMBARGO_STORAGE_TYPE` is set to `postgres`. Port for the Postgres server. If not set it will default to 5432.
+
+EMBARGO_POSTGRES_USERNAME - Used only if `EMBARGO_STORAGE_TYPE` is set to `postgres`. Username used to connect to the Postgres server.
+
+EMBARGO_POSTGRES_PASSWORD - Used only if `EMBARGO_STORAGE_TYPE` is set to `postgres`. Password used to connect to the Postgres server.
+
+EMBARGO_POSTGRES_DATABASE - Used only if `EMBARGO_STORAGE_TYPE` is set to `postgres`. Database to use in Postgres. If not set it will default to `embargo`
+
+
 
 ### API
 Path | Methods
