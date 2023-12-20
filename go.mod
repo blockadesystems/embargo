@@ -3,7 +3,7 @@ module github.com/blockadesystems/embargo
 go 1.21
 
 require (
-	github.com/boltdb/bolt v1.3.1
+	go.etcd.io/bbolt v1.3.8
 	github.com/gocql/gocql v1.6.0
 	github.com/google/uuid v1.5.0
 	github.com/labstack/echo/v4 v4.11.3
