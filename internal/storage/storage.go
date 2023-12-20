@@ -15,9 +15,9 @@ import (
 	"github.com/blockadesystems/embargo/internal/encryption"
 	"github.com/blockadesystems/embargo/internal/shared"
 
-	"github.com/boltdb/bolt"
 	"github.com/gocql/gocql"
 	"github.com/google/uuid"
+	bolt "go.etcd.io/bbolt"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
