@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/blockadesystems/embargo/internal/encryption"
+	"github.com/blockadesystems/embargo/internal/raft"
 	"github.com/blockadesystems/embargo/internal/shared"
 
 	"github.com/gocql/gocql"
@@ -68,6 +69,20 @@ func InitDB(dbType string) {
 	case "postgres":
 		println("Initializing Postgres")
 		Store = PostgresStorage{}
+		Store, err = Store.OpenDB()
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+		println("Creating buckets")
+		Store.CreateBucket("embargo_mounts")
+		Store.CreateBucket("embargo_sys")
+		Store.CreateBucket("embargo_tokens")
+		Store.CreateBucket("embargo_policies")
+		println("Buckets created")
+	case "raft":
+		println("Initializing Raft")
+		Store = RaftStorage{}
 		Store, err = Store.OpenDB()
 		if err != nil {
 			fmt.Println(err)
@@ -181,6 +196,14 @@ type BoltStorage struct {
 
 type CassandraStorage struct {
 	Db *gocql.Session
+}
+
+type PostgresStorage struct {
+	Db *gorm.DB
+}
+
+type RaftStorage struct {
+	Db *raft.StateMachine
 }
 
 func encryptSecret(value string) string {
@@ -520,10 +543,6 @@ func (c CassandraStorage) BucketExists(bucket string) bool {
 }
 
 // Postgres
-type PostgresStorage struct {
-	Db *gorm.DB
-}
-
 func (p PostgresStorage) OpenDB() (Storage, error) {
 	var err error
 	// Get Postgres host from environment
@@ -643,5 +662,183 @@ func (p PostgresStorage) BucketExists(bucket string) bool {
 	if data.Error != nil {
 		return false
 	}
+	return exists
+}
+
+// Raft
+func (r RaftStorage) OpenDB() (Storage, error) {
+
+	// var err error
+	// embargoFile := os.Getenv("EMBARGO_FILE")
+	// if embargoFile == "" {
+	// 	embargoFile = "embargo.db"
+	// }
+	// r.Db, err = bolt.Open(embargoFile, 0600, nil)
+	// if err != nil {
+	// 	return nil, err
+	// }
+
+	// return r, nil
+	raft.StartRaft()
+	r.Db = raft.Fsm
+
+	return r, nil
+}
+
+func (r RaftStorage) CreateBucket(bucket string) error {
+	// err := r.Db.Update(func(tx *bolt.Tx) error {
+	// 	_, err := tx.CreateBucketIfNotExists([]byte(bucket))
+	// 	if err != nil {
+	// 		return fmt.Errorf("create bucket: %s", err)
+	// 	}
+	// 	return nil
+	// })
+	// if err != nil {
+	// 	return err
+	// }
+
+	return nil
+}
+
+func (r RaftStorage) CreateKey(bucket string, key string, value string, encrypt bool) error {
+
+	// if encrypt {
+	// 	value = encryptSecret(value)
+	// }
+
+	// err := r.Db.Update(func(tx *bolt.Tx) error {
+	// 	b := tx.Bucket([]byte(bucket))
+	// 	// catch panic here if bucket doesn't exist
+	// 	if b == nil {
+	// 		return fmt.Errorf("bucket does not exist")
+	// 	}
+	// 	err := b.Put([]byte(key), []byte(value))
+	// 	if err != nil {
+	// 		return fmt.Errorf("create key: %s", err)
+	// 	}
+	// 	return nil
+	// })
+	// if err != nil {
+	// 	return err
+	// }
+	data := shared.Entry{
+		Key:   key,
+		Value: value,
+	}
+	r.Db.Apply(data)
+
+	return nil
+}
+
+func (r RaftStorage) ReadAllKeys(bucket string) (map[string]string, error) {
+	keys := make(map[string]string)
+	// err := r.Db.View(func(tx *bolt.Tx) error {
+	// 	b := tx.Bucket([]byte(bucket))
+	// 	// catch panic here if bucket doesn't exist
+	// 	if b == nil {
+	// 		return fmt.Errorf("bucket does not exist")
+	// 	}
+	// 	c := b.Cursor()
+
+	// 	for k, v := c.First(); k != nil; k, v = c.Next() {
+	// 		keys[string(k)] = string(v)
+	// 	}
+	// 	return nil
+	// })
+	// if err != nil {
+	// 	return nil, err
+	// }
+	return keys, nil
+}
+
+func (r RaftStorage) ReadKey(bucket string, key string, encrypted bool) (string, error) {
+	var value string
+	// err := r.Db.View(func(tx *bolt.Tx) error {
+	// 	b := tx.Bucket([]byte(bucket))
+	// 	// catch panic here if bucket doesn't exist
+	// 	if b == nil {
+	// 		return fmt.Errorf("bucket does not exist")
+	// 	}
+	// 	v := b.Get([]byte(key))
+	// 	value = string(v)
+	// 	return nil
+	// })
+	// if err != nil {
+	// 	return "", err
+	// }
+
+	// if encrypted {
+	// 	value = decryptSecret(value)
+	// }
+
+	return value, nil
+}
+
+func (r RaftStorage) UpdateKey(bucket string, key string, value string) error {
+	// err := r.Db.Update(func(tx *bolt.Tx) error {
+	// 	b := tx.Bucket([]byte(bucket))
+	// 	// catch panic here if bucket doesn't exist
+	// 	if b == nil {
+	// 		return fmt.Errorf("bucket does not exist")
+	// 	}
+	// 	err := b.Put([]byte(key), []byte(value))
+	// 	if err != nil {
+	// 		return fmt.Errorf("update key: %s", err)
+	// 	}
+	// 	return nil
+	// })
+	// if err != nil {
+	// 	return err
+	// }
+	return nil
+}
+
+func (r RaftStorage) DeleteKey(bucket string, key string) error {
+	// err := r.Db.Update(func(tx *bolt.Tx) error {
+	// 	b := tx.Bucket([]byte(bucket))
+	// 	// catch panic here if bucket doesn't exist
+	// 	if b == nil {
+	// 		return fmt.Errorf("bucket does not exist")
+	// 	}
+	// 	err := b.Delete([]byte(key))
+	// 	if err != nil {
+	// 		return fmt.Errorf("delete key: %s", err)
+	// 	}
+	// 	return nil
+	// })
+	// if err != nil {
+	// 	return err
+	// }
+	return nil
+}
+
+func (r RaftStorage) DeleteBucket(bucket string) error {
+	// err := r.Db.Update(func(tx *bolt.Tx) error {
+	// 	err := tx.DeleteBucket([]byte(bucket))
+	// 	if err != nil {
+	// 		return fmt.Errorf("delete bucket: %s", err)
+	// 	}
+	// 	return nil
+	// })
+	// if err != nil {
+	// 	return err
+	// }
+	return nil
+}
+
+func (r RaftStorage) BucketExists(bucket string) bool {
+	var exists bool
+	// err := r.Db.View(func(tx *bolt.Tx) error {
+	// 	b := tx.Bucket([]byte(bucket))
+	// 	if b == nil {
+	// 		exists = false
+	// 	} else {
+	// 		exists = true
+	// 	}
+	// 	return nil
+	// })
+	// if err != nil {
+	// 	return false
+	// }
 	return exists
 }

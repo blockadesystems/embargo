@@ -5,7 +5,14 @@
  */
 package shared
 
-import "github.com/google/uuid"
+import (
+	"github.com/google/uuid"
+)
+
+type Entry struct {
+	Key   string
+	Value string
+}
 
 type Mounts struct {
 	Path        string `json:"path"`
