@@ -1,251 +1,110 @@
 package raft
 
 import (
-	"context"
-	"encoding/json"
-	"io"
-	"log"
-	"net"
+	// "net/http"
+	// "strconv"
 
-	"os"
-	"os/signal"
+	"github.com/google/uuid"
+	bolt "go.etcd.io/bbolt"
 
-	"strings"
-	"sync"
-	"time"
-
-	"github.com/shaj13/raft"
-	"github.com/shaj13/raft/transport"
-	"github.com/shaj13/raft/transport/raftgrpc"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-
-	"github.com/blockadesystems/embargo/internal/shared"
+	// "go.etcd.io/etcd/client/pkg/v3/types"
+	"go.etcd.io/etcd/raft/v3"
+	"go.etcd.io/etcd/server/v3/etcdserver/api/rafthttp"
+	// stats "go.etcd.io/etcd/server/v3/etcdserver/api/v2stats"
 )
 
-var (
-	raftServer *grpc.Server
-	opts       []raft.Option
-	startOpts  []raft.StartOption
-	node       *raft.Node
-	Fsm        *StateMachine
-	raftAddr   string
-)
-
-func init1() {
-	// addr := flag.String("raft", "", "raft server address")
-	// join := flag.String("join", "", "join cluster address")
-	// api := flag.String("api", "", "api server address")
-	// state := flag.String("state_dir", "", "raft state directory (WAL, Snapshots)")
-	// flag.Parse()
-	addr := os.Getenv("EMBARGO_RAFT_ADDRESS")
-	if addr == "" {
-		addr = ":8081"
-	}
-	join := os.Getenv("EMBARGO_RAFT_JOIN")
-	state := os.Getenv("EMBARGO_RAFT_DIR")
-	if state == "" {
-		state = "./raft/1"
-	}
-
-	startOpts = append(startOpts, raft.WithAddress(addr))
-	opts = append(opts, raft.WithStateDIR(state))
-	if join != "" {
-		opt := raft.WithFallback(
-			raft.WithJoin(join, time.Second),
-			raft.WithRestart(),
-		)
-		startOpts = append(startOpts, opt)
-	} else {
-		opt := raft.WithFallback(
-			raft.WithInitCluster(),
-			raft.WithRestart(),
-		)
-		startOpts = append(startOpts, opt)
-	}
-
-	raftAddr = addr
-}
-
-func init2() {
-	raftgrpc.Register(
-		raftgrpc.WithDialOptions(grpc.WithTransportCredentials(insecure.NewCredentials())),
-	)
-	Fsm = NewstateMachine()
-	node = raft.NewNode(Fsm, transport.GRPC, opts...)
-	raftServer = grpc.NewServer()
-	raftgrpc.RegisterHandler(raftServer, node.Handler())
-	// router = mux.NewRouter()
-	// router.HandleFunc("/", http.HandlerFunc(save)).Methods("PUT", "POST")
-	// router.HandleFunc("/{key}", http.HandlerFunc(get)).Methods("GET")
-	// router.HandleFunc("/mgmt/nodes", http.HandlerFunc(nodes)).Methods("GET")
-	// router.HandleFunc("/mgmt/nodes/{id}", http.HandlerFunc(removeNode)).Methods("DELETE")
-}
-
-func StartRaft() {
-	init1()
-	init2()
-	go func() {
-		lis, err := net.Listen("tcp", raftAddr)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		err = raftServer.Serve(lis)
-		if err != nil {
-			log.Fatal(err)
-		}
-	}()
-
-	go func() {
-		err := node.Start(startOpts...)
-		if err != nil && err != raft.ErrNodeStopped {
-			log.Fatal(err)
-		}
-	}()
-
-	// go func() {
-	// 	err := http.ListenAndServe(httpAddr, router)
-	// 	if err != nil && err != http.ErrServerClosed {
-	// 		log.Fatal(err)
-	// 	}
-	// }()
-
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt)
-
-	<-c
-	raftServer.GracefulStop()
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
-	defer cancel()
-	_ = node.Shutdown(ctx)
-
-}
-
-// func get(w http.ResponseWriter, r *http.Request) {
-// 	key := mux.Vars(r)["key"]
-
-// 	ctx, cancel := context.WithTimeout(r.Context(), time.Second)
-// 	defer cancel()
-
-// 	if err := node.LinearizableRead(ctx); err != nil {
-// 		http.Error(w, err.Error(), http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	value := fsm.Read(key)
-// 	w.Write([]byte(value))
-// 	w.Write([]byte{'\n'})
+// type BoltDB struct {
+// 	*bolt.DB
+// 	node    raft.Node
+// 	storage *raft.MemoryStorage
 // }
 
-// func nodes(w http.ResponseWriter, r *http.Request) {
-// 	raws := []raft.RawMember{}
-// 	membs := node.Members()
-// 	for _, m := range membs {
-// 		raws = append(raws, m.Raw())
-// 	}
-
-// 	buf, err := json.Marshal(raws)
+// func NewBoltDB(path string, id uint64, peers []raft.Peer) (*BoltDB, error) {
+// 	println("raft server starting")
+// 	db, err := bolt.Open(path, 0600, nil)
 // 	if err != nil {
-// 		panic(err)
+// 		return nil, err
 // 	}
 
-// 	w.Write(buf)
-// 	w.Write([]byte{'\n'})
+// 	storage := raft.NewMemoryStorage()
+// 	uid := uuid.New()
+// 	// convet uid to uint64
+// 	newId := uint64(uid.ID())
+// 	c := &raft.Config{
+// 		ID:              newId,
+// 		ElectionTick:    10,
+// 		HeartbeatTick:   1,
+// 		Storage:         storage,
+// 		MaxSizePerMsg:   4096,
+// 		MaxInflightMsgs: 256,
+// 	}
+
+// 	node := raft.StartNode(c, peers)
+// 	println("raft server started")
+// 	println(node)
+// 	println("Node status: ", node.Status().String())
+
+// 	return &BoltDB{
+// 		DB:      db,
+// 		node:    node,
+// 		storage: storage,
+// 	}, nil
 // }
 
-// func removeNode(w http.ResponseWriter, r *http.Request) {
-// 	sid := mux.Vars(r)["id"]
-// 	id, err := strconv.ParseUint(sid, 0, 64)
-// 	if err != nil {
-// 		http.Error(w, err.Error(), http.StatusBadRequest)
-// 		return
-// 	}
+// Implement methods to interact with the database and the raft node...
 
-// 	ctx, cancel := context.WithTimeout(r.Context(), time.Second)
-// 	defer cancel()
-
-// 	if err := node.RemoveMember(ctx, id); err != nil {
-// 		http.Error(w, err.Error(), http.StatusInternalServerError)
-// 		return
-// 	}
-// }
-
-// func save(w http.ResponseWriter, r *http.Request) {
-// 	buf, err := ioutil.ReadAll(r.Body)
-// 	if err != nil {
-// 		http.Error(w, err.Error(), http.StatusBadRequest)
-// 		return
-// 	}
-
-// 	if err := json.Unmarshal(buf, new(entry)); err != nil {
-// 		http.Error(w, err.Error(), http.StatusBadRequest)
-// 		return
-// 	}
-
-// 	ctx, cancel := context.WithTimeout(r.Context(), time.Second)
-// 	defer cancel()
-
-// 	if err := node.Replicate(ctx, buf); err != nil {
-// 		http.Error(w, err.Error(), http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	w.WriteHeader(http.StatusNoContent)
-// }
-
-func NewstateMachine() *StateMachine {
-	return &StateMachine{
-		kv: make(map[string]string),
-	}
+type BoltDB struct {
+	*bolt.DB
+	node      raft.Node
+	storage   *raft.MemoryStorage
+	transport *rafthttp.Transport
 }
 
-type StateMachine struct {
-	mu sync.Mutex
-	kv map[string]string
-}
-
-func (s *StateMachine) Apply(data []byte) {
-	var e shared.Entry
-	if err := json.Unmarshal(data, &e); err != nil {
-		log.Println("unable to Unmarshal entry", err)
-		return
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.kv[e.Key] = e.Value
-}
-
-func (s *StateMachine) Snapshot() (io.ReadCloser, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	buf, err := json.Marshal(&s.kv)
+func NewBoltDB(path string, id uint64, peers []raft.Peer, cluster string) (*BoltDB, error) {
+	db, err := bolt.Open(path, 0600, nil)
 	if err != nil {
 		return nil, err
 	}
-	return io.NopCloser(strings.NewReader(string(buf))), nil
-}
 
-func (s *StateMachine) Restore(r io.ReadCloser) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	buf, err := io.ReadAll(r)
-	if err != nil {
-		return err
+	storage := raft.NewMemoryStorage()
+	uid := uuid.New()
+	// convet uid to uint64
+	id = uint64(uid.ID())
+	c := &raft.Config{
+		ID:              id,
+		ElectionTick:    10,
+		HeartbeatTick:   1,
+		Storage:         storage,
+		MaxSizePerMsg:   4096,
+		MaxInflightMsgs: 256,
 	}
 
-	err = json.Unmarshal(buf, &s.kv)
-	if err != nil {
-		return err
-	}
+	node := raft.StartNode(c, peers)
 
-	return r.Close()
-}
+	// Create a new HTTP transport
+	// transport := &rafthttp.Transport{
+	// 	ID:          types.ID(c.ID),
+	// 	ClusterID:   types.ID(id),
+	// 	Raft:        node,
+	// 	ServerStats: stats.NewServerStats("", ""),
+	// 	LeaderStats: stats.NewLeaderStats(strconv.Itoa(int(id))),
+	// 	ErrorC:      make(chan error),
+	// }
+	var transport rafthttp.Transporter
 
-func (s *StateMachine) Read(key string) string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.kv[key]
+	transport.Start()
+
+	// Create a new HTTP server and add the Raft handler
+	// srv := http.Server{
+	// 	Handler: transport.Handler(),
+	// }
+
+	// go srv.Serve(listener)
+
+	return &BoltDB{
+		DB:      db,
+		node:    node,
+		storage: storage,
+		// transport: transport,
+	}, nil
 }
