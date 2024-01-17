@@ -168,7 +168,7 @@ type Storage interface {
 	CreateKey(bucket string, key string, value string, encrypt bool) error
 	ReadKey(bucket string, key string, encrypted bool) (string, error)
 	ReadAllKeys(bucket string) (map[string]string, error)
-	UpdateKey(bucket string, key string, value string) error
+	UpdateKey(bucket string, key string, value string, encrypt bool) error
 	DeleteKey(bucket string, key string) error
 	DeleteBucket(bucket string) error
 	BucketExists(bucket string) bool
@@ -313,7 +313,7 @@ func (b BoltStorage) ReadKey(bucket string, key string, encrypted bool) (string,
 	return value, nil
 }
 
-func (b BoltStorage) UpdateKey(bucket string, key string, value string) error {
+func (b BoltStorage) UpdateKey(bucket string, key string, value string, encrypt bool) error {
 	err := b.Db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(bucket))
 		// catch panic here if bucket doesn't exist
@@ -486,7 +486,7 @@ func (c CassandraStorage) ReadKey(bucket string, key string, encrypted bool) (st
 	return value, nil
 }
 
-func (c CassandraStorage) UpdateKey(bucket string, key string, value string) error {
+func (c CassandraStorage) UpdateKey(bucket string, key string, value string, encrypt bool) error {
 	err := c.Db.Query("UPDATE "+Keyspace+"."+bucket+" SET value = ? WHERE key = ?", value, key).Exec()
 	if err != nil {
 		return err
@@ -556,18 +556,27 @@ func (p PostgresStorage) OpenDB() (Storage, error) {
 		postgresDatabase = "embargo"
 	}
 
-	dsn := "host=" + postgresHost + " user=" + postgresUsername + " password=" + postgresPassword + " dbname=" + postgresDatabase + " port=" + postgresPort + " sslmode=disable TimeZone=UTC"
+	// dsn := "host=" + postgresHost + " user=" + postgresUsername + " password=" + postgresPassword + " dbname=" + postgresDatabase + " port=" + postgresPort + " sslmode=disable TimeZone=UTC"
+	dsn := "host=" + postgresHost + " user=" + postgresUsername + " password=" + postgresPassword + " port=" + postgresPort + " dbname=" + postgresDatabase + " sslmode=disable TimeZone=UTC options='--client_encoding=UTF8'"
 	p.Db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		return nil, err
 	}
 
+	// Create database if it doesn't exist
+	// err = p.Db.Exec("SELECT 'CREATE DATABASE' " + postgresDatabase + " WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '" + postgresDatabase + "')").Error
+	// if err != nil {
+	// 	return nil, err
+	// }
+
 	return p, nil
 }
 
 func (p PostgresStorage) CreateBucket(bucket string) error {
+	// create table as hstore if it doesn't exist
+
 	err := p.Db.Exec("CREATE TABLE IF NOT EXISTS " + bucket +
-		" (key text PRIMARY KEY, value text);").Error
+		" (key text PRIMARY KEY, value bytea);").Error
 	if err != nil {
 		return err
 	}
@@ -576,10 +585,17 @@ func (p PostgresStorage) CreateBucket(bucket string) error {
 }
 
 func (p PostgresStorage) CreateKey(bucket string, key string, value string, encrypt bool) error {
+	println("creating key")
+	println(bucket)
+	println(key)
+	println(value)
 	if encrypt {
 		value = encryptSecret(value)
 	}
-	err := p.Db.Exec("INSERT INTO "+bucket+" (key, value) VALUES (?, ?)", key, value).Error
+
+	valueUTF := []byte(value)
+
+	err := p.Db.Exec("INSERT INTO "+bucket+" (key, value) VALUES (?, ?)", key, valueUTF).Error
 	if err != nil {
 		println("error inserting key")
 		return err
@@ -606,15 +622,26 @@ func (p PostgresStorage) ReadKey(bucket string, key string, encrypted bool) (str
 		return "", data.Error
 	}
 
+	// convert bytea to string
+	valueSt := string(value[:])
+
 	if encrypted {
-		value = decryptSecret(value)
+		// value = decryptSecret(value)
+		valueSt = decryptSecret(valueSt)
 	}
 
-	return value, nil
+	// return value, nil
+	return valueSt, nil
 }
 
-func (p PostgresStorage) UpdateKey(bucket string, key string, value string) error {
-	err := p.Db.Exec("UPDATE "+bucket+" SET value = ? WHERE key = ?", value, key).Error
+func (p PostgresStorage) UpdateKey(bucket string, key string, value string, encrypt bool) error {
+	if encrypt {
+		value = encryptSecret(value)
+	}
+
+	valueUTF := []byte(value)
+
+	err := p.Db.Exec("UPDATE "+bucket+" SET value = ? WHERE key = ?", valueUTF, key).Error
 	if err != nil {
 		return err
 	}

@@ -167,7 +167,7 @@ func StartSys() {
 		log.Println("Error marshalling unseal data", err)
 		panic(err)
 	}
-	err = db.UpdateKey("embargo_sys", "unseal", string(data))
+	err = db.UpdateKey("embargo_sys", "unseal", string(data), false)
 	if err != nil {
 		log.Println("Error updating unseal key", err)
 		panic(err)
@@ -187,7 +187,7 @@ func StartSys() {
 		log.Println("Error marshalling rekey data", err)
 		panic(err)
 	}
-	err = db.UpdateKey("embargo_sys", "rekey", string(rekeyJSON))
+	err = db.UpdateKey("embargo_sys", "rekey", string(rekeyJSON), false)
 	if err != nil {
 		log.Println("Error updating rekey key", err)
 		panic(err)
@@ -244,7 +244,7 @@ func InitSys(r shared.InitSysRequest) (shared.InitSysResponse, error) {
 		log.Println("Error marshalling unseal data", err)
 		panic(err)
 	}
-	err = db.UpdateKey("embargo_sys", "unseal", string(data))
+	err = db.UpdateKey("embargo_sys", "unseal", string(data), false)
 	if err != nil {
 		log.Println("Error updating unseal key", err)
 		panic(err)
@@ -306,7 +306,7 @@ func InitSys(r shared.InitSysRequest) (shared.InitSysResponse, error) {
 	}
 
 	// Update initialized to true
-	err = db.UpdateKey("embargo_sys", "initialized", "true")
+	err = db.UpdateKey("embargo_sys", "initialized", "true", false)
 	if err != nil {
 		log.Println("Error updating initialized key", err)
 		panic(err)
@@ -314,19 +314,20 @@ func InitSys(r shared.InitSysRequest) (shared.InitSysResponse, error) {
 
 	// Create a root embargo token
 
-	token, key := tokenauth.CreateEmbargoToken("root", 0, true, true, true, uuid.Nil, []uuid.UUID{}, make(map[string]string))
+	_, key := tokenauth.CreateEmbargoToken("root", 0, true, true, true, uuid.Nil, []uuid.UUID{}, make(map[string]string))
 
 	// Store the token in the database
-	tokenJSON, err := json.Marshal(token)
-	if err != nil {
-		log.Println("Error marshalling token", err)
-		panic(err)
-	}
-	err = db.CreateKey("embargo_tokens", token.TokenID.String(), string(tokenJSON), false)
-	if err != nil {
-		log.Println("Error creating token", err)
-		panic(err)
-	}
+	// tokenJSON, err := json.Marshal(token)
+	// if err != nil {
+	// 	log.Println("Error marshalling token", err)
+	// 	panic(err)
+	// }
+	// println("creating token")
+	// err = db.CreateKey("embargo_tokens", token.TokenID.String(), string(tokenJSON), false)
+	// if err != nil {
+	// 	log.Println("Error creating token", err)
+	// 	panic(err)
+	// }
 
 	// unset the root key and encryption key
 	encryption.RootKey = ""
@@ -518,7 +519,7 @@ func Unseal(c echo.Context) error {
 			log.Println("Error marshalling unseal data", err)
 			panic(err)
 		}
-		err = db.UpdateKey("embargo_sys", "unseal", string(data))
+		err = db.UpdateKey("embargo_sys", "unseal", string(data), false)
 		if err != nil {
 			log.Println("Error updating unseal key", err)
 			panic(err)
@@ -555,7 +556,7 @@ func Unseal(c echo.Context) error {
 		log.Println("Error marshalling unseal data", err)
 		panic(err)
 	}
-	err = db.UpdateKey("embargo_sys", "unseal", string(data))
+	err = db.UpdateKey("embargo_sys", "unseal", string(data), false)
 	if err != nil {
 		log.Println("Error updating unseal key", err)
 		panic(err)
@@ -578,7 +579,7 @@ func Unseal(c echo.Context) error {
 				log.Println("Error marshalling unseal data", err)
 				panic(err)
 			}
-			err = db.UpdateKey("embargo_sys", "unseal", string(data))
+			err = db.UpdateKey("embargo_sys", "unseal", string(data), false)
 			if err != nil {
 				log.Println("Error updating unseal key", err)
 				panic(err)
@@ -604,7 +605,7 @@ func Unseal(c echo.Context) error {
 				log.Println("Error marshalling unseal data", err)
 				panic(err)
 			}
-			err = db.UpdateKey("embargo_sys", "unseal", string(data))
+			err = db.UpdateKey("embargo_sys", "unseal", string(data), false)
 			if err != nil {
 				log.Println("Error updating unseal key", err)
 				panic(err)
@@ -734,7 +735,7 @@ func RekeyInitPost(c echo.Context) error {
 		log.Println("Error marshalling rekey data", err)
 		panic(err)
 	}
-	err = db.UpdateKey("embargo_sys", "rekey", string(data))
+	err = db.UpdateKey("embargo_sys", "rekey", string(data), false)
 	if err != nil {
 		log.Println("Error updating rekey key", err)
 		panic(err)
@@ -783,7 +784,7 @@ func RekeyInitDelete(c echo.Context) error {
 		log.Println("Error marshalling rekey data", err)
 		panic(err)
 	}
-	err = db.UpdateKey("embargo_sys", "rekey", string(rekeyJSON))
+	err = db.UpdateKey("embargo_sys", "rekey", string(rekeyJSON), false)
 	if err != nil {
 		log.Println("Error updating rekey key", err)
 		panic(err)
@@ -848,7 +849,7 @@ func RekeyUpdatePost(c echo.Context) error {
 		log.Println("Error marshalling rekey data", err)
 		panic(err)
 	}
-	err = db.UpdateKey("embargo_sys", "rekey", string(data))
+	err = db.UpdateKey("embargo_sys", "rekey", string(data), false)
 	if err != nil {
 		log.Println("Error updating rekey key", err)
 		panic(err)
@@ -876,7 +877,7 @@ func RekeyUpdatePost(c echo.Context) error {
 				log.Println("Error marshalling rekey data", err)
 				panic(err)
 			}
-			err = db.UpdateKey("embargo_sys", "rekey", string(rekeyJSON))
+			err = db.UpdateKey("embargo_sys", "rekey", string(rekeyJSON), false)
 			if err != nil {
 				log.Println("Error updating rekey key", err)
 				panic(err)
@@ -915,7 +916,7 @@ func RekeyUpdatePost(c echo.Context) error {
 			log.Println("Error hashing root key", err)
 			panic(err)
 		}
-		err = db.CreateKey("embargo_sys", "root_key", string(hashedRootKey), false)
+		err = db.UpdateKey("embargo_sys", "root_key", string(hashedRootKey), false)
 		if err != nil {
 			log.Println("Error creating root key", err)
 			panic(err)
@@ -952,7 +953,7 @@ func RekeyUpdatePost(c echo.Context) error {
 			log.Println("Error marshalling rekey data", err)
 			panic(err)
 		}
-		err = db.UpdateKey("embargo_sys", "rekey", string(rekeyJSON))
+		err = db.UpdateKey("embargo_sys", "rekey", string(rekeyJSON), false)
 		if err != nil {
 			log.Println("Error updating rekey key", err)
 			panic(err)
@@ -1221,7 +1222,7 @@ func PostMountTune(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, err)
 	}
 
-	err = db.UpdateKey("embargo_mounts", mountStr, string(mountJSON))
+	err = db.UpdateKey("embargo_mounts", mountStr, string(mountJSON), false)
 	if err != nil {
 		log.Println("Error updating mount", err)
 		return c.JSON(http.StatusInternalServerError, err)

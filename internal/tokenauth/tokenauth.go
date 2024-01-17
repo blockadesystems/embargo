@@ -312,7 +312,7 @@ func RenewToken(c echo.Context) error {
 		println(err)
 	}
 
-	err = db.UpdateKey("embargo_tokens", token.TokenID.String(), string(updatedTokenJSON))
+	err = db.UpdateKey("embargo_tokens", token.TokenID.String(), string(updatedTokenJSON), false)
 	if err != nil {
 		println("Error updating token")
 		println(err)
