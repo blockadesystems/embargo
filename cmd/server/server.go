@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/blockadesystems/embargo/internal/kvengine"
 	"github.com/blockadesystems/embargo/internal/shared"
@@ -139,6 +140,18 @@ func StartServer(devMode bool) {
 		The database file is embargodev.db and will be removed the next time you start Embargo in dev mode.
 		To access the server, use the following token: ` + res.RootToken
 		println(message)
+	} else if storageType == "raft" {
+		storage.InitDB(storageType)
+		time.Sleep(5 * time.Second)
+		sys.StartSys()
+		// _, leaderId := shared.RaftStore.Raft.LeaderWithID()
+		// if string(leaderId) == shared.RaftNodeId {
+		// 	logger.Info("Leader, starting sys")
+		// 	time.Sleep(5 * time.Second)
+		// 	sys.StartSys()
+		// } else {
+		// 	logger.Info("Not leader, not starting sys")
+		// }
 	} else {
 		storage.InitDB(storageType)
 		sys.StartSys()
@@ -181,7 +194,7 @@ func StartServer(devMode bool) {
 	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		initMiddleware := checkInitMiddleware(next)
 		return func(c echo.Context) error {
-			if c.Path() == "/sys/init" {
+			if c.Path() == "/sys/init" || c.Path() == "/raft/leader" || c.Path() == "/raft/status" || c.Path() == "/raft/join" {
 				return next(c)
 			}
 			return initMiddleware(c)
@@ -190,7 +203,7 @@ func StartServer(devMode bool) {
 	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		sealMiddleware := checkSealMiddleware(next)
 		return func(c echo.Context) error {
-			if c.Path() == "/sys/init" || c.Path() == "/sys/unseal" || c.Path() == "/sys/seal-status" {
+			if c.Path() == "/sys/init" || c.Path() == "/sys/unseal" || c.Path() == "/sys/seal-status" || c.Path() == "/raft/leader" || c.Path() == "/raft/status" || c.Path() == "/raft/join" {
 				return next(c)
 			}
 			return sealMiddleware(c)
@@ -205,8 +218,13 @@ func StartServer(devMode bool) {
 	e.GET("/sys/seal-status", sys.GetSealStatus)
 	e.POST("/sys/unseal", sys.Unseal)
 
+	// raft endpoints
+	e.GET("/raft/leader", sys.GetLeader)
+	e.GET("raft/status", sys.GetRaftStatus)
+	e.POST("/raft/join", sys.JoinRaft)
+
 	// Calls below this line require a valid token
-	skipPaths := []string{"/sys/init", "/sys/seal-status", "/sys/unseal"}
+	skipPaths := []string{"/sys/init", "/sys/seal-status", "/sys/unseal", "/raft/leader", "/raft/status", "/raft/join"}
 	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		embargoTokenMiddleware := tokenauth.ValidateEmbargoToken(next)
 		return func(c echo.Context) error {

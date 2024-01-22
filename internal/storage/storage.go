@@ -6,13 +6,20 @@
 package storage
 
 import (
+	"bytes"
+	"crypto/tls"
+	b64 "encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"log"
+	"net/http"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/blockadesystems/embargo/internal/encryption"
+	"github.com/blockadesystems/embargo/internal/raft"
 	"github.com/blockadesystems/embargo/internal/shared"
 
 	"github.com/gocql/gocql"
@@ -36,6 +43,7 @@ func InitDB(dbType string) {
 
 	switch dbType {
 	case "memory":
+		shared.StorageType = "memory"
 		Store = BoltStorage{}
 		Store, err = Store.OpenDB()
 		if err != nil {
@@ -52,6 +60,7 @@ func InitDB(dbType string) {
 		Store.CreateBucket("embargo_tokens")
 		Store.CreateBucket("embargo_policies")
 	case "cassandra":
+		shared.StorageType = "cassandra"
 		println("Initializing Cassandra")
 		Store = CassandraStorage{}
 		Store, err = Store.OpenDB()
@@ -66,6 +75,7 @@ func InitDB(dbType string) {
 		Store.CreateBucket("embargo_policies")
 		println("Buckets created")
 	case "postgres":
+		shared.StorageType = "postgres"
 		println("Initializing Postgres")
 		Store = PostgresStorage{}
 		Store, err = Store.OpenDB()
@@ -79,6 +89,34 @@ func InitDB(dbType string) {
 		Store.CreateBucket("embargo_tokens")
 		Store.CreateBucket("embargo_policies")
 		println("Buckets created")
+	case "raft":
+		shared.StorageType = "raft"
+		println("Initializing Raft")
+		Store = RaftStorage{}
+		Store, err = Store.OpenDB()
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+		_, leaderId := shared.RaftStore.Raft.LeaderWithID()
+		nodeId := os.Getenv("EMBARGO_RAFT_NODE_ID")
+		println("Leader ID: " + leaderId)
+		println("Node ID: " + nodeId)
+
+		if string(leaderId) == nodeId {
+			println("Node is leader")
+			println(string(leaderId))
+			println("Creating buckets")
+			// Store.CreateBucket("embargo_mounts")
+			// Store.CreateBucket("embargo_sys")
+			// Store.CreateBucket("embargo_tokens")
+			// Store.CreateBucket("embargo_policies")
+			println("Buckets created")
+		} else {
+			println("Node is not leader, not creating buckets")
+
+		}
+
 	}
 
 	// Add sys, tokens, and policies mounts if they don't exist
@@ -172,7 +210,6 @@ type Storage interface {
 	DeleteKey(bucket string, key string) error
 	DeleteBucket(bucket string) error
 	BucketExists(bucket string) bool
-	// GetMountChildren(bucket string, key string) ([]string, error)
 }
 
 type BoltStorage struct {
@@ -181,6 +218,10 @@ type BoltStorage struct {
 
 type CassandraStorage struct {
 	Db *gocql.Session
+}
+
+type RaftStorage struct {
+	Db *raft.Store
 }
 
 func encryptSecret(value string) string {
@@ -671,4 +712,405 @@ func (p PostgresStorage) BucketExists(bucket string) bool {
 		return false
 	}
 	return exists
+}
+
+// Raft
+
+func (r RaftStorage) OpenDB() (Storage, error) {
+	r.Db = raft.New(false)
+
+	bindAddr := os.Getenv("EMBARGO_RAFT_ADDRESS")
+	if bindAddr == "" {
+		bindAddr = ":8081"
+	}
+	r.Db.RaftBind = bindAddr
+
+	raftDir := os.Getenv("EMBARGO_RAFT_DIR")
+	if raftDir == "" {
+		raftDir = "raft"
+	}
+
+	r.Db.RaftDir = raftDir
+
+	nodeID := os.Getenv("EMBARGO_RAFT_NODE_ID")
+	if nodeID == "" {
+		nodeID = "node1"
+	}
+	joinAddrsStr := os.Getenv("EMBARGO_RAFT_JOIN_ADDRESSES")
+
+	r.Db.Open(joinAddrsStr == "", nodeID)
+	// r.Db.Open(true, nodeID)
+
+	// if joinAddrsStr != "" {
+	// 	log.Println("Joining raft cluster")
+	// 	joinAddrs := strings.Split(joinAddrsStr, ",")
+	// 	for _, addr := range joinAddrs {
+	// 		log.Println("Joining " + addr)
+	// 		addrSplit := strings.Split(addr, "-")
+	// 		nodeId := addrSplit[0]
+	// 		nodeAddr := addrSplit[1]
+	// 		// r.Db.Join(addrSplit[0], addrSplit[1])
+	// 		r.Db.Join(nodeId, nodeAddr)
+	// 	}
+	// }
+
+	// sleep for 5 seconds to give the raft cluster time to form
+	time.Sleep(5 * time.Second)
+
+	// check if this node is the leader, if not issue join command if joinAddrsStr is set
+	_, leaderId := r.Db.Raft.LeaderWithID()
+	if string(leaderId) != nodeID {
+		if joinAddrsStr != "" {
+			log.Println("Joining raft cluster")
+			joinAddrs := strings.Split(joinAddrsStr, ",")
+			for _, addr := range joinAddrs {
+				log.Println("Joining " + addr)
+				addrSplit := strings.Split(addr, "-")
+				// nodeId := addrSplit[0]
+				nodeAddr := addrSplit[1]
+				b, err := json.Marshal(map[string]string{"node_addr": bindAddr, "node_id": nodeID})
+				if err != nil {
+					log.Println("error marshalling json")
+					log.Println(err)
+				}
+				transCfg := &http.Transport{
+					TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // ignore expired SSL certificates
+				}
+				client := &http.Client{Transport: transCfg}
+				resp, err := client.Post("https://"+nodeAddr+"/raft/join", "application/json", bytes.NewBuffer(b))
+				if err != nil {
+					log.Println("error joining raft cluster")
+					log.Println(err)
+				}
+				defer resp.Body.Close()
+				htmlData, err := ioutil.ReadAll(resp.Body)
+				if err != nil {
+					log.Println("error reading response body")
+					log.Println(err)
+				}
+				log.Println(string(htmlData))
+			}
+		}
+	}
+
+	shared.RaftStore = r.Db
+	shared.RaftNodeId = nodeID
+
+	return r, nil
+}
+
+func (r RaftStorage) CreateBucket(bucket string) error {
+	// Check if key (aka bucket) exists
+	// If it doesn't exist, create it
+	b, err := r.Db.Get(bucket)
+	if err != nil {
+		log.Println("error getting bucket")
+		log.Println(err)
+		return err
+	}
+	if b == "{}" || b == "" {
+		err = r.Db.Set(bucket, "{}")
+		if err != nil {
+			log.Println("error setting bucket")
+			log.Println(err)
+			return err
+		}
+	}
+	return nil
+}
+
+func (r RaftStorage) CreateKey(bucket string, key string, value string, encrypt bool) error {
+	// log.Println("starting create key")
+	// log.Println("bucket: " + bucket)
+	// log.Println("key: " + key)
+
+	if encrypt {
+		value = encryptSecret(value)
+	}
+
+	// get the bucket (aka key)
+	b, err := r.Db.Get(bucket)
+	if err != nil {
+		return err
+	}
+
+	// if the bucket doesn't exist, create it
+	if b == "" {
+		err = r.Db.Set(bucket, "{}")
+		if err != nil {
+			log.Println("error setting bucket")
+			return err
+		}
+	}
+
+	// get the bucket again
+	b, err = r.Db.Get(bucket)
+	if err != nil {
+		log.Println("error getting bucket")
+		return err
+	}
+
+	// if the bucket still doesn't exist, return an error
+	if b == "" {
+		log.Println("bucket does not exist after creating it")
+		return fmt.Errorf("can not create key, bucket does not exist")
+	}
+
+	// unmashal the bucket into a struct
+	bucketStruct := make(map[string]string)
+	err = json.Unmarshal([]byte(b), &bucketStruct)
+	if err != nil {
+		return err
+	}
+
+	// add or update the key/value pair
+	valueB64 := b64.StdEncoding.EncodeToString([]byte(value))
+	bucketStruct[key] = valueB64
+
+	// Marshal the bucket back to JSON
+	bucketValueJSON, err := json.Marshal(bucketStruct)
+	if err != nil {
+		log.Println("error marshalling bucket")
+		return err
+	}
+
+	// Set the bucket's value
+	err = r.Db.Set(bucket, string(bucketValueJSON))
+	if err != nil {
+		log.Println("error setting bucket")
+		return err
+	}
+
+	// testing
+	b, err = r.Db.Get(bucket)
+	if err != nil {
+		return err
+	}
+	log.Println("bucket: " + b)
+
+	return nil
+
+}
+
+func (r RaftStorage) ReadAllKeys(bucket string) (map[string]string, error) {
+	// log.Println("starting read all keys")
+	keys := make(map[string]string)
+
+	// get the bucket (aka key)
+	b, err := r.Db.Get(bucket)
+	if err != nil {
+		return nil, err
+	}
+
+	// if the bucket doesn't exist, return an error
+	if b == "" {
+		return nil, fmt.Errorf("bucket does not exist")
+	}
+
+	// unmashal the bucket into a struct
+	bucketStruct := make(map[string]string)
+	err = json.Unmarshal([]byte(b), &bucketStruct)
+	if err != nil {
+		return nil, err
+	}
+
+	// loop through the keys and add them to the map
+	for k, v := range bucketStruct {
+		keys[k] = v
+	}
+
+	return keys, nil
+}
+
+func (r RaftStorage) ReadKey(bucket string, key string, encrypted bool) (string, error) {
+	var value string
+	// log.Println("starting read key")
+	// log.Println("bucket: " + bucket)
+	// log.Println("key: " + key)
+
+	// get the bucket (aka key)
+	b, err := r.Db.Get(bucket)
+	if err != nil {
+		log.Println("error getting bucket")
+		return "", err
+	}
+
+	// if the bucket doesn't exist, return an error
+	if b == "" {
+		log.Printf("bucket %s does not exist", bucket)
+		return "", fmt.Errorf("bucket does not exist")
+	}
+
+	// unmashal the bucket into a struct
+	bucketStruct := make(map[string]string)
+	err = json.Unmarshal([]byte(b), &bucketStruct)
+	if err != nil {
+		return "", err
+	}
+
+	// try to find the key in the bucket
+	for k, v := range bucketStruct {
+		if k == key {
+			log.Println("found key")
+			log.Println(v)
+			value = v
+		}
+	}
+
+	if value == "" {
+		log.Println("key not found")
+		log.Println("key: " + key)
+		log.Println("bucket: " + bucket)
+		log.Println("value: " + value)
+		return "", fmt.Errorf("key does not exist")
+	}
+
+	// decode the value
+	valueDecoded, err := b64.StdEncoding.DecodeString(value)
+	if err != nil {
+		return "", err
+	}
+	value = string(valueDecoded)
+
+	// if the key doesn't exist, return an error
+	if value == "" {
+		return "", fmt.Errorf("key does not exist")
+	}
+
+	if encrypted {
+		value = decryptSecret(string(value))
+	}
+
+	return value, nil
+}
+
+func (r RaftStorage) UpdateKey(bucket string, key string, value string, encrypt bool) error {
+	// log.Println("starting update key")
+	// log.Println("bucket: " + bucket)
+	// log.Println("key: " + key)
+	// log.Println("value: " + value)
+	if encrypt {
+		value = encryptSecret(value)
+	}
+
+	// get the bucket (aka key)
+	b, err := r.Db.Get(bucket)
+	if err != nil {
+		log.Println("error getting bucket")
+		return err
+	}
+
+	// if the bucket doesn't exist, return an error
+	if b == "" {
+		log.Printf("bucket %s does not exist", bucket)
+		return fmt.Errorf("bucket does not exist")
+	}
+
+	// unmashal the bucket into a struct
+	bucketStruct := make(map[string]string)
+	err = json.Unmarshal([]byte(b), &bucketStruct)
+	if err != nil {
+		log.Println("error unmarshalling bucket")
+		return err
+	}
+
+	// set the key/value pair
+	valueB64 := b64.StdEncoding.EncodeToString([]byte(value))
+	bucketStruct[key] = valueB64
+
+	// Marshal the bucket back to JSON
+	bucketValueJSON, err := json.Marshal(bucketStruct)
+	if err != nil {
+		log.Println("error marshalling bucket")
+		return err
+	}
+
+	// Set the bucket's value
+	err = r.Db.Set(bucket, string(bucketValueJSON))
+	if err != nil {
+		log.Println("error setting bucket")
+		return err
+	}
+
+	return nil
+}
+
+func (r RaftStorage) DeleteKey(bucket string, key string) error {
+
+	// get the bucket (aka key)
+	b, err := r.Db.Get(bucket)
+	if err != nil {
+		return err
+	}
+
+	// if the bucket doesn't exist, return an error
+	if b == "" {
+		return fmt.Errorf("bucket does not exist")
+	}
+
+	// unmashal the bucket into a struct
+	bucketStruct := make(map[string]string)
+	err = json.Unmarshal([]byte(b), &bucketStruct)
+	if err != nil {
+		return err
+	}
+
+	// try to find the key in the bucket
+	for k := range bucketStruct {
+		if k == key {
+			delete(bucketStruct, k)
+		}
+	}
+
+	// Marshal the bucket back to JSON
+	bucketValueJSON, err := json.Marshal(bucketStruct)
+	if err != nil {
+		return err
+	}
+
+	// Set the bucket's value
+	err = r.Db.Set(bucket, string(bucketValueJSON))
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (r RaftStorage) DeleteBucket(bucket string) error {
+
+	// get the bucket (aka key)
+	b, err := r.Db.Get(bucket)
+	if err != nil {
+		return err
+	}
+
+	// if the bucket doesn't exist, return an error
+	if b == "" {
+		return fmt.Errorf("bucket does not exist")
+	}
+
+	// delete the bucket
+	err = r.Db.Delete(bucket)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (r RaftStorage) BucketExists(bucket string) bool {
+	// get the bucket (aka key)
+	b, err := r.Db.Get(bucket)
+	if err != nil {
+		return false
+	}
+
+	// if the bucket doesn't exist, return false
+	if b == "" {
+		return false
+	}
+
+	// if the bucket exists, return true
+	return true
 }

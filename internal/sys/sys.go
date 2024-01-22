@@ -104,13 +104,15 @@ func StartSys() {
 		// panic(err)
 	}
 	// If the key does not exist, create it
-	if i == "" {
-		err = db.CreateKey("embargo_sys", "initialized", "false", false)
-		if err != nil {
-			log.Println("Error creating initialized key", err)
-			panic(err)
+	if shared.IsRaftLeader() {
+		if i == "" {
+			err = db.CreateKey("embargo_sys", "initialized", "false", false)
+			if err != nil {
+				log.Println("Error creating initialized key", err)
+				panic(err)
+			}
+			i = "false"
 		}
-		i = "false"
 	}
 
 	initialized, err := strconv.ParseBool(i)
@@ -167,10 +169,12 @@ func StartSys() {
 		log.Println("Error marshalling unseal data", err)
 		panic(err)
 	}
-	err = db.UpdateKey("embargo_sys", "unseal", string(data), false)
-	if err != nil {
-		log.Println("Error updating unseal key", err)
-		panic(err)
+	if shared.IsRaftLeader() {
+		err = db.UpdateKey("embargo_sys", "unseal", string(data), false)
+		if err != nil {
+			log.Println("Error updating unseal key", err)
+			panic(err)
+		}
 	}
 
 	// Reset rekey_in_progress
@@ -187,10 +191,12 @@ func StartSys() {
 		log.Println("Error marshalling rekey data", err)
 		panic(err)
 	}
-	err = db.UpdateKey("embargo_sys", "rekey", string(rekeyJSON), false)
-	if err != nil {
-		log.Println("Error updating rekey key", err)
-		panic(err)
+	if shared.IsRaftLeader() {
+		err = db.UpdateKey("embargo_sys", "rekey", string(rekeyJSON), false)
+		if err != nil {
+			log.Println("Error updating rekey key", err)
+			panic(err)
+		}
 	}
 }
 
@@ -1231,4 +1237,52 @@ func PostMountTune(c echo.Context) error {
 	// Send a blank response
 	return c.JSON(http.StatusOK, "")
 
+}
+
+// raft
+func GetLeader(c echo.Context) error {
+	leader, leaderId := shared.RaftStore.Raft.LeaderWithID()
+	// Create the response data
+	resData := make(map[string]interface{})
+	resData["leader"] = leader
+	resData["leader_id"] = leaderId
+	log.Println("leader: ", leader)
+
+	return c.JSON(http.StatusOK, resData)
+}
+
+func GetRaftStatus(c echo.Context) error {
+	// Get the raft status
+	status := shared.RaftStore.Raft.Stats()
+
+	// Create the response data
+	resData := make(map[string]interface{})
+	resData["status"] = status
+
+	return c.JSON(http.StatusOK, resData)
+}
+
+type JoinRaftRequest struct {
+	NodeId   string `json:"node_id"`
+	NodeAddr string `json:"node_addr"`
+}
+
+func JoinRaft(c echo.Context) error {
+	// Get the request data
+	r := new(JoinRaftRequest)
+	if err := c.Bind(r); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+
+	// Join the raft cluster
+	err := shared.RaftStore.Join(r.NodeId, r.NodeAddr)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, err)
+	}
+
+	// Create the response data
+	resData := make(map[string]interface{})
+	resData["message"] = "Node joined raft cluster"
+
+	return c.JSON(http.StatusOK, resData)
 }

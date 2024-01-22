@@ -5,7 +5,10 @@
  */
 package shared
 
-import "github.com/google/uuid"
+import (
+	"github.com/blockadesystems/embargo/internal/raft"
+	"github.com/google/uuid"
+)
 
 type Mounts struct {
 	Path        string `json:"path"`
@@ -88,4 +91,14 @@ type KvResponseData struct {
 		Destroyed      bool              `json:"destroyed" validate:"required"`
 		Version        int64             `json:"version" validate:"required"`
 	} `json:"metadata" validate:"required"`
+}
+
+var StorageType string
+
+var RaftStore *raft.Store
+var RaftNodeId string
+
+func IsRaftLeader() bool {
+	_, leaderId := RaftStore.Raft.LeaderWithID()
+	return string(leaderId) == RaftNodeId
 }
