@@ -28,12 +28,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-type UnsealData struct {
-	Threshold int
-	Shares    int
-	Keys      []string
-}
-
 type UnsealRequest struct {
 	Key   string    `json:"key" validate:"optional"`
 	Reset bool      `json:"reset" validate:"optional"`
@@ -95,22 +89,16 @@ func randomString(n int) string {
 }
 
 func StartSys() {
+	log.Println("---Starting sys---")
 	db := storage.GetStore()
 
 	// Check if system has been initialized, if value does not exist then add it
 	i, err := db.ReadKey("embargo_sys", "initialized", false)
 	if err != nil {
 		log.Println("Error reading initialized key", err)
-		// panic(err)
-	}
-	// If the key does not exist, create it
-	if shared.IsRaftLeader() {
-		if i == "" {
-			err = db.CreateKey("embargo_sys", "initialized", "false", false)
-			if err != nil {
-				log.Println("Error creating initialized key", err)
-				panic(err)
-			}
+		if shared.StorageType != "raft" {
+			panic(err)
+		} else {
 			i = "false"
 		}
 	}
@@ -134,6 +122,7 @@ func StartSys() {
 	}
 	autoUnsealBool, err := strconv.ParseBool(autoUnseal)
 	if autoUnsealBool {
+		log.Println("---Auto unseal enabled---")
 		// Get the unseal keys from env
 		unsealKeys := os.Getenv("EMBARGO_UNSEAL_KEYS")
 		if unsealKeys == "" {
@@ -154,28 +143,27 @@ func StartSys() {
 	}
 
 	// Get unseal data from the db
-	u, err := db.ReadKey("embargo_sys", "unseal", false)
-	if err != nil {
-		log.Println("Error reading unseal key", err)
-		panic(err)
-	}
-	var unsealData UnsealData
-	json.Unmarshal([]byte(u), &unsealData)
+	// u, err := db.ReadKey("embargo_sys", "unseal", false)
+	// if err != nil {
+	// 	log.Println("Error reading unseal key", err)
+	// 	panic(err)
+	// }
+	// var unsealData shared.UnsealData
+	// json.Unmarshal([]byte(u), &unsealData)
+	shared.Unseal.Keys = []string{}
 
 	// Reset unseal data
-	unsealData.Keys = []string{}
-	data, err := json.Marshal(unsealData)
-	if err != nil {
-		log.Println("Error marshalling unseal data", err)
-		panic(err)
-	}
-	if shared.IsRaftLeader() {
-		err = db.UpdateKey("embargo_sys", "unseal", string(data), false)
-		if err != nil {
-			log.Println("Error updating unseal key", err)
-			panic(err)
-		}
-	}
+	// unsealData.Keys = []string{}
+	// data, err := json.Marshal(unsealData)
+	// if err != nil {
+	// 	log.Println("Error marshalling unseal data", err)
+	// 	panic(err)
+	// }
+	// err = db.UpdateKey("embargo_sys", "unseal", string(data), false)
+	// if err != nil {
+	// 	log.Println("Error updating unseal key", err)
+	// 	panic(err)
+	// }
 
 	// Reset rekey_in_progress
 	var rekey RekeyData
@@ -191,13 +179,17 @@ func StartSys() {
 		log.Println("Error marshalling rekey data", err)
 		panic(err)
 	}
-	if shared.IsRaftLeader() {
-		err = db.UpdateKey("embargo_sys", "rekey", string(rekeyJSON), false)
-		if err != nil {
-			log.Println("Error updating rekey key", err)
-			panic(err)
+
+	if shared.StorageType == "raft" {
+		if shared.IsRaftLeader() {
+			err = db.UpdateKey("embargo_sys", "rekey", string(rekeyJSON), false)
+			if err != nil {
+				log.Println("Error updating rekey key", err)
+				panic(err)
+			}
 		}
 	}
+
 }
 
 func InitStatus(c echo.Context) error {
@@ -229,6 +221,7 @@ func InitSys(r shared.InitSysRequest) (shared.InitSysResponse, error) {
 	// Check if the system has already been initialized. If so, return an error
 	i, err := db.ReadKey("embargo_sys", "initialized", false)
 	if err != nil {
+		log.Println("Error reading initialized key", err)
 		return res, err
 	}
 	initialized, err := strconv.ParseBool(i)
@@ -240,21 +233,22 @@ func InitSys(r shared.InitSysRequest) (shared.InitSysResponse, error) {
 	}
 
 	// Set the unseal data and update the database
-	unsealData := UnsealData{
+	unsealData := shared.UnsealData{
 		Threshold: r.Threshold,
 		Shares:    r.Shares,
 		Keys:      []string{},
 	}
-	data, err := json.Marshal(unsealData)
-	if err != nil {
-		log.Println("Error marshalling unseal data", err)
-		panic(err)
-	}
-	err = db.UpdateKey("embargo_sys", "unseal", string(data), false)
-	if err != nil {
-		log.Println("Error updating unseal key", err)
-		panic(err)
-	}
+	// data, err := json.Marshal(unsealData)
+	// if err != nil {
+	// 	log.Println("Error marshalling unseal data", err)
+	// 	panic(err)
+	// }
+	// err = db.UpdateKey("embargo_sys", "unseal", string(data), false)
+	// if err != nil {
+	// 	log.Println("Error updating unseal key", err)
+	// 	panic(err)
+	// }
+	shared.Unseal = unsealData
 
 	// Generate the root key
 	FutureRootKey := randomString(32)
@@ -322,19 +316,6 @@ func InitSys(r shared.InitSysRequest) (shared.InitSysResponse, error) {
 
 	_, key := tokenauth.CreateEmbargoToken("root", 0, true, true, true, uuid.Nil, []uuid.UUID{}, make(map[string]string))
 
-	// Store the token in the database
-	// tokenJSON, err := json.Marshal(token)
-	// if err != nil {
-	// 	log.Println("Error marshalling token", err)
-	// 	panic(err)
-	// }
-	// println("creating token")
-	// err = db.CreateKey("embargo_tokens", token.TokenID.String(), string(tokenJSON), false)
-	// if err != nil {
-	// 	log.Println("Error creating token", err)
-	// 	panic(err)
-	// }
-
 	// unset the root key and encryption key
 	encryption.RootKey = ""
 	encryption.EncKeys = shared.EncryptionKeyList{}
@@ -349,6 +330,13 @@ func InitSys(r shared.InitSysRequest) (shared.InitSysResponse, error) {
 func InitSysPost(c echo.Context) error {
 	// secret_shares and secret_threshold are required
 	// secret_shares must be greater than or equal to secret_threshold
+
+	if shared.StorageType == "raft" {
+		// set return data as error. Init is not supported in raft mode
+		returnData := make(map[string]interface{})
+		returnData["message"] = "embargo is running in raft mode. Init is not supported in raft mode"
+		return c.JSON(http.StatusBadRequest, returnData)
+	}
 
 	// Get the request data
 	r := new(shared.InitSysRequest)
@@ -424,6 +412,7 @@ func GetSealStatus(c echo.Context) error {
 }
 
 func unsealSystem(keys []string) error {
+	log.Println("---Unseal called")
 	var shares [][]byte
 
 	for _, key := range keys {
@@ -435,11 +424,13 @@ func unsealSystem(keys []string) error {
 		}
 		shares = append(shares, k[:n])
 	}
+	log.Println("---Unseal Shares", shares)
 
 	// Try and combine the keys
 	// If it fails, return an error
 	rk, err := shamir.Combine(shares)
 	if err != nil {
+		log.Println("Error combining shares", err)
 		return err
 	}
 
@@ -447,6 +438,27 @@ func unsealSystem(keys []string) error {
 	// See if the root key matches the stored hash
 	// If it does, set the root key
 	// If it doesn't, return an error
+	if shared.StorageType == "raft" {
+		if !shared.IsRaftLeader() {
+			log.Println("---Unseal Not the leader, returning")
+			status := shared.RaftStore.Raft.Stats()
+			m2 := make(map[string]interface{}, len(status))
+			for k, v := range status {
+				m2[k] = v
+			}
+			numPeers, err := strconv.Atoi(m2["num_peers"].(string))
+			if err != nil {
+				numPeers = 0
+			}
+			encryption.RootKey = string(rk)
+			if m2["state"] == "Follower" && numPeers == 0 {
+				encryption.RootKey = string(rk)
+				go SendJoinRequest()
+			}
+
+			return nil
+		}
+	}
 	db := storage.GetStore()
 	h, err := db.ReadKey("embargo_sys", "root_key", false)
 	if err != nil {
@@ -458,6 +470,7 @@ func unsealSystem(keys []string) error {
 		return err
 	}
 
+	log.Println("---Unseal Root Key", string(rk))
 	encryption.RootKey = string(rk)
 
 	// Get the encryption key from the database
@@ -484,17 +497,41 @@ func unsealSystem(keys []string) error {
 	return nil
 }
 
+// func GetEncKeys() {
+// 	db := storage.GetStore()
+
+// 	e, err := db.ReadKey("embargo_sys", "encryption_key", false)
+// 	if err != nil {
+// 		log.Println("Error reading encryption key", err)
+// 		panic(err)
+// 	}
+// 	decryptedData, err := encryption.DecryptKeys([]byte(e))
+// 	if err != nil {
+// 		log.Println("Error decrypting encryption key", err)
+// 		panic(err)
+// 	}
+// 	tmp := new(shared.EncryptionKeyList)
+// 	err = json.Unmarshal([]byte(decryptedData), tmp)
+// 	if err != nil {
+// 		log.Println("Error unmarshalling encryption key", err)
+// 		panic(err)
+// 	}
+// 	encryption.EncKeys = *tmp
+// }
+
 func Unseal(c echo.Context) error {
-	db := storage.GetStore()
+	log.Println("Unseal called")
+	// db := storage.GetStore()
 
 	// Get unseal data from the db
-	u, err := db.ReadKey("embargo_sys", "unseal", false)
-	if err != nil {
-		log.Println("Error reading unseal key", err)
-		panic(err)
-	}
-	var unsealData UnsealData
-	json.Unmarshal([]byte(u), &unsealData)
+	// u, err := db.ReadKey("embargo_sys", "unseal", false)
+	// if err != nil {
+	// 	log.Println("Error reading unseal key", err)
+	// 	panic(err)
+	// }
+	// var unsealData shared.UnsealData
+	// json.Unmarshal([]byte(u), &unsealData)
+	// unsealData := shared.Unseal
 
 	// Get sealed status
 	sealed := true
@@ -519,24 +556,29 @@ func Unseal(c echo.Context) error {
 	// If so, reset unseal data and return
 	if r.Reset {
 		// Reset unseal data
-		unsealData.Keys = []string{}
-		data, err := json.Marshal(unsealData)
-		if err != nil {
-			log.Println("Error marshalling unseal data", err)
-			panic(err)
-		}
-		err = db.UpdateKey("embargo_sys", "unseal", string(data), false)
-		if err != nil {
-			log.Println("Error updating unseal key", err)
-			panic(err)
-		}
+		// unsealData.Keys = []string{}
+		// data, err := json.Marshal(unsealData)
+		// if err != nil {
+		// 	log.Println("Error marshalling unseal data", err)
+		// 	panic(err)
+		// }
+		// err = db.UpdateKey("embargo_sys", "unseal", string(data), false)
+		// if err != nil {
+		// 	log.Println("Error updating unseal key", err)
+		// 	panic(err)
+		// }
+		shared.Unseal.Keys = []string{}
+		// unsealData.Keys = []string{}
 
 		// Set response data
 		returnData := make(map[string]interface{})
 		returnData["sealed"] = sealed
-		returnData["threshold"] = unsealData.Threshold
-		returnData["number"] = len(unsealData.Keys)
-		returnData["progress"] = strconv.Itoa(0) + "/" + strconv.Itoa(unsealData.Threshold)
+		// returnData["threshold"] = unsealData.Threshold
+		// returnData["number"] = len(unsealData.Keys)
+		// returnData["progress"] = strconv.Itoa(0) + "/" + strconv.Itoa(unsealData.Threshold)
+		returnData["threshold"] = shared.Unseal.Threshold
+		returnData["number"] = len(shared.Unseal.Keys)
+		returnData["progress"] = strconv.Itoa(0) + "/" + strconv.Itoa(shared.Unseal.Threshold)
 
 		return c.JSON(http.StatusOK, returnData)
 	}
@@ -550,53 +592,61 @@ func Unseal(c echo.Context) error {
 	// Validate the key provided
 	// If it is not valid, return an error
 	k := make([]byte, b64.StdEncoding.DecodedLen(len(r.Key)))
-	_, err = b64.StdEncoding.Decode(k, []byte(r.Key))
+	_, err := b64.StdEncoding.Decode(k, []byte(r.Key))
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, "invalid key")
 	}
 
 	// Add the key to the unseal data
-	unsealData.Keys = append(unsealData.Keys, r.Key)
-	data, err := json.Marshal(unsealData)
-	if err != nil {
-		log.Println("Error marshalling unseal data", err)
-		panic(err)
-	}
-	err = db.UpdateKey("embargo_sys", "unseal", string(data), false)
-	if err != nil {
-		log.Println("Error updating unseal key", err)
-		panic(err)
-	}
+	// unsealData.Keys = append(unsealData.Keys, r.Key)
+	shared.Unseal.Keys = append(shared.Unseal.Keys, r.Key)
+	log.Println("Unseal keys", shared.Unseal.Keys)
+	// data, err := json.Marshal(unsealData)
+	// if err != nil {
+	// 	log.Println("Error marshalling unseal data", err)
+	// 	panic(err)
+	// }
+	// err = db.UpdateKey("embargo_sys", "unseal", string(data), false)
+	// if err != nil {
+	// 	log.Println("Error updating unseal key", err)
+	// 	panic(err)
+	// }
 
 	// Check if we have enough keys to unseal the system
 	// If so, unseal the system
 	// If not, return the current unseal status
-	if len(unsealData.Keys) >= unsealData.Threshold {
+	// if len(unsealData.Keys) >= unsealData.Threshold {
+	if len(shared.Unseal.Keys) >= shared.Unseal.Threshold {
 
 		// Try and combine the keys
 		// If it fails, reset the unseal data and return
 		// rk, err := shamir.Combine(keys)
-		err := unsealSystem(unsealData.Keys)
+		// err := unsealSystem(unsealData.Keys)
+		err := unsealSystem(shared.Unseal.Keys)
 		if err != nil {
 			// Reset the unseal data
-			unsealData.Keys = []string{}
-			data, err := json.Marshal(unsealData)
-			if err != nil {
-				log.Println("Error marshalling unseal data", err)
-				panic(err)
-			}
-			err = db.UpdateKey("embargo_sys", "unseal", string(data), false)
-			if err != nil {
-				log.Println("Error updating unseal key", err)
-				panic(err)
-			}
+			// unsealData.Keys = []string{}
+			shared.Unseal.Keys = []string{}
+			// data, err := json.Marshal(unsealData)
+			// if err != nil {
+			// 	log.Println("Error marshalling unseal data", err)
+			// 	panic(err)
+			// }
+			// err = db.UpdateKey("embargo_sys", "unseal", string(data), false)
+			// if err != nil {
+			// 	log.Println("Error updating unseal key", err)
+			// 	panic(err)
+			// }
 
 			// Set response data
 			returnData := make(map[string]interface{})
 			returnData["sealed"] = sealed
-			returnData["threshold"] = unsealData.Threshold
-			returnData["number"] = len(unsealData.Keys)
-			returnData["progress"] = strconv.Itoa(0) + "/" + strconv.Itoa(unsealData.Threshold)
+			// returnData["threshold"] = unsealData.Threshold
+			// returnData["number"] = len(unsealData.Keys)
+			// returnData["progress"] = strconv.Itoa(0) + "/" + strconv.Itoa(unsealData.Threshold)
+			returnData["threshold"] = shared.Unseal.Threshold
+			returnData["number"] = len(shared.Unseal.Keys)
+			returnData["progress"] = strconv.Itoa(0) + "/" + strconv.Itoa(shared.Unseal.Threshold)
 
 			return c.JSON(http.StatusOK, returnData)
 		}
@@ -605,24 +655,28 @@ func Unseal(c echo.Context) error {
 
 		if err != nil {
 			// Reset the unseal data
-			unsealData.Keys = []string{}
-			data, err := json.Marshal(unsealData)
-			if err != nil {
-				log.Println("Error marshalling unseal data", err)
-				panic(err)
-			}
-			err = db.UpdateKey("embargo_sys", "unseal", string(data), false)
-			if err != nil {
-				log.Println("Error updating unseal key", err)
-				panic(err)
-			}
+			// unsealData.Keys = []string{}
+			shared.Unseal.Keys = []string{}
+			// data, err := json.Marshal(unsealData)
+			// if err != nil {
+			// 	log.Println("Error marshalling unseal data", err)
+			// 	panic(err)
+			// }
+			// err = db.UpdateKey("embargo_sys", "unseal", string(data), false)
+			// if err != nil {
+			// 	log.Println("Error updating unseal key", err)
+			// 	panic(err)
+			// }
 
 			// Set response data
 			returnData := make(map[string]interface{})
 			returnData["sealed"] = sealed
-			returnData["threshold"] = unsealData.Threshold
-			returnData["number"] = len(unsealData.Keys)
-			returnData["progress"] = strconv.Itoa(0) + "/" + strconv.Itoa(unsealData.Threshold)
+			// returnData["threshold"] = unsealData.Threshold
+			// returnData["number"] = len(unsealData.Keys)
+			// returnData["progress"] = strconv.Itoa(0) + "/" + strconv.Itoa(unsealData.Threshold)
+			returnData["threshold"] = shared.Unseal.Threshold
+			returnData["number"] = len(shared.Unseal.Keys)
+			returnData["progress"] = strconv.Itoa(0) + "/" + strconv.Itoa(shared.Unseal.Threshold)
 
 			return c.JSON(http.StatusOK, returnData)
 		}
@@ -632,18 +686,24 @@ func Unseal(c echo.Context) error {
 		// Set response data
 		returnData := make(map[string]interface{})
 		returnData["sealed"] = sealed
-		returnData["threshold"] = unsealData.Threshold
-		returnData["number"] = len(unsealData.Keys)
-		returnData["progress"] = strconv.Itoa(len(unsealData.Keys)) + "/" + strconv.Itoa(unsealData.Threshold)
+		// returnData["threshold"] = unsealData.Threshold
+		// returnData["number"] = len(unsealData.Keys)
+		// returnData["progress"] = strconv.Itoa(len(unsealData.Keys)) + "/" + strconv.Itoa(unsealData.Threshold)
+		returnData["threshold"] = shared.Unseal.Threshold
+		returnData["number"] = len(shared.Unseal.Keys)
+		returnData["progress"] = strconv.Itoa(len(shared.Unseal.Keys)) + "/" + strconv.Itoa(shared.Unseal.Threshold)
 
 		return c.JSON(http.StatusOK, returnData)
 	} else {
 		// Set response data
 		returnData := make(map[string]interface{})
 		returnData["sealed"] = sealed
-		returnData["threshold"] = unsealData.Threshold
-		returnData["number"] = len(unsealData.Keys)
-		returnData["progress"] = strconv.Itoa(len(unsealData.Keys)) + "/" + strconv.Itoa(unsealData.Threshold)
+		// returnData["threshold"] = unsealData.Threshold
+		// returnData["number"] = len(unsealData.Keys)
+		// returnData["progress"] = strconv.Itoa(len(unsealData.Keys)) + "/" + strconv.Itoa(unsealData.Threshold)
+		returnData["threshold"] = shared.Unseal.Threshold
+		returnData["number"] = len(shared.Unseal.Keys)
+		returnData["progress"] = strconv.Itoa(len(shared.Unseal.Keys)) + "/" + strconv.Itoa(shared.Unseal.Threshold)
 
 		return c.JSON(http.StatusOK, returnData)
 	}
@@ -725,7 +785,7 @@ func RekeyInitPost(c echo.Context) error {
 		log.Println("Error reading unseal key", err)
 		panic(err)
 	}
-	var unsealData UnsealData
+	var unsealData shared.UnsealData
 	json.Unmarshal([]byte(u), &unsealData)
 
 	// Set the rekey data and update the database
@@ -1237,52 +1297,4 @@ func PostMountTune(c echo.Context) error {
 	// Send a blank response
 	return c.JSON(http.StatusOK, "")
 
-}
-
-// raft
-func GetLeader(c echo.Context) error {
-	leader, leaderId := shared.RaftStore.Raft.LeaderWithID()
-	// Create the response data
-	resData := make(map[string]interface{})
-	resData["leader"] = leader
-	resData["leader_id"] = leaderId
-	log.Println("leader: ", leader)
-
-	return c.JSON(http.StatusOK, resData)
-}
-
-func GetRaftStatus(c echo.Context) error {
-	// Get the raft status
-	status := shared.RaftStore.Raft.Stats()
-
-	// Create the response data
-	resData := make(map[string]interface{})
-	resData["status"] = status
-
-	return c.JSON(http.StatusOK, resData)
-}
-
-type JoinRaftRequest struct {
-	NodeId   string `json:"node_id"`
-	NodeAddr string `json:"node_addr"`
-}
-
-func JoinRaft(c echo.Context) error {
-	// Get the request data
-	r := new(JoinRaftRequest)
-	if err := c.Bind(r); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
-	}
-
-	// Join the raft cluster
-	err := shared.RaftStore.Join(r.NodeId, r.NodeAddr)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, err)
-	}
-
-	// Create the response data
-	resData := make(map[string]interface{})
-	resData["message"] = "Node joined raft cluster"
-
-	return c.JSON(http.StatusOK, resData)
 }

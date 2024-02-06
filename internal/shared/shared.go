@@ -10,6 +10,12 @@ import (
 	"github.com/google/uuid"
 )
 
+type UnsealData struct {
+	Threshold int
+	Shares    int
+	Keys      []string
+}
+
 type Mounts struct {
 	Path        string `json:"path"`
 	BucketType  string `json:"type"`
@@ -93,7 +99,26 @@ type KvResponseData struct {
 	} `json:"metadata" validate:"required"`
 }
 
+type Storage interface {
+	OpenDB() (Storage, error)
+	CreateBucket(bucket string) error
+	CreateKey(bucket string, key string, value string, encrypt bool) error
+	ReadKey(bucket string, key string, encrypted bool) (string, error)
+	ReadAllKeys(bucket string) (map[string]string, error)
+	UpdateKey(bucket string, key string, value string, encrypt bool) error
+	DeleteKey(bucket string, key string) error
+	DeleteBucket(bucket string) error
+	BucketExists(bucket string) bool
+}
+
+var Unseal UnsealData
+
 var StorageType string
+var Store Storage
+
+func GetStore() Storage {
+	return Store
+}
 
 var RaftStore *raft.Store
 var RaftNodeId string
@@ -102,3 +127,16 @@ func IsRaftLeader() bool {
 	_, leaderId := RaftStore.Raft.LeaderWithID()
 	return string(leaderId) == RaftNodeId
 }
+
+var RaftJoinRequest struct {
+	Address       string `json:"address"`
+	SkipTlsVerify bool   `json:"skip_tls_verify"`
+}
+
+type RaftClusterRequest struct {
+	NodeSecretString string `json:"node_secret_string"`
+	NodeId           string `json:"node_id"`
+	RaftAddress      string `json:"raft_address"`
+}
+
+var RaftClusterRequestData []RaftClusterRequest

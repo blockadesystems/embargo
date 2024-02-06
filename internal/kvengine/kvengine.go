@@ -186,13 +186,16 @@ func getUnmarshalSecret(mountNoSlash string, key string) (*shared.Secret, error)
 	// Get the secret
 	secretStr, err := db.ReadKey(mountNoSlash, key, true)
 	if err != nil {
+		log.Println("failed to read key")
 		return nil, err
 	}
+	log.Println("secretStr: ", secretStr)
 
 	// Unmarshal the secret
 	storedSecret := new(shared.Secret)
 	err = json.Unmarshal([]byte(secretStr), &storedSecret)
 	if err != nil {
+		log.Println("failed to unmarshal secret in getUnmarshalSecret")
 		return nil, err
 	}
 

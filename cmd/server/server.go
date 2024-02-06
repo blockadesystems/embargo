@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-	"time"
 
 	"github.com/blockadesystems/embargo/internal/kvengine"
 	"github.com/blockadesystems/embargo/internal/shared"
@@ -141,17 +140,8 @@ func StartServer(devMode bool) {
 		To access the server, use the following token: ` + res.RootToken
 		println(message)
 	} else if storageType == "raft" {
-		storage.InitDB(storageType)
-		time.Sleep(5 * time.Second)
+		sys.RaftInit()
 		sys.StartSys()
-		// _, leaderId := shared.RaftStore.Raft.LeaderWithID()
-		// if string(leaderId) == shared.RaftNodeId {
-		// 	logger.Info("Leader, starting sys")
-		// 	time.Sleep(5 * time.Second)
-		// 	sys.StartSys()
-		// } else {
-		// 	logger.Info("Not leader, not starting sys")
-		// }
 	} else {
 		storage.InitDB(storageType)
 		sys.StartSys()
@@ -194,7 +184,7 @@ func StartServer(devMode bool) {
 	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		initMiddleware := checkInitMiddleware(next)
 		return func(c echo.Context) error {
-			if c.Path() == "/sys/init" || c.Path() == "/raft/leader" || c.Path() == "/raft/status" || c.Path() == "/raft/join" {
+			if c.Path() == "/sys/init" || c.Path() == "/sys/raft/bootstrap" || c.Path() == "/sys/raft/status" || c.Path() == "/sys/unseal" || c.Path() == "/sys/raft/join" || c.Path() == "/sys/raft/join-request" {
 				return next(c)
 			}
 			return initMiddleware(c)
@@ -203,7 +193,7 @@ func StartServer(devMode bool) {
 	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		sealMiddleware := checkSealMiddleware(next)
 		return func(c echo.Context) error {
-			if c.Path() == "/sys/init" || c.Path() == "/sys/unseal" || c.Path() == "/sys/seal-status" || c.Path() == "/raft/leader" || c.Path() == "/raft/status" || c.Path() == "/raft/join" {
+			if c.Path() == "/sys/init" || c.Path() == "/sys/unseal" || c.Path() == "/sys/seal-status" || c.Path() == "/sys/raft/bootstrap" || c.Path() == "/sys/raft/status" || c.Path() == "/sys/raft/join" || c.Path() == "/sys/raft/join-request" {
 				return next(c)
 			}
 			return sealMiddleware(c)
@@ -219,12 +209,12 @@ func StartServer(devMode bool) {
 	e.POST("/sys/unseal", sys.Unseal)
 
 	// raft endpoints
-	e.GET("/raft/leader", sys.GetLeader)
-	e.GET("raft/status", sys.GetRaftStatus)
-	e.POST("/raft/join", sys.JoinRaft)
+	e.POST("/sys/raft/bootstrap", sys.BootstrapRaft)
+	e.POST("/sys/raft/join", sys.JoinRaft)
+	e.POST("/sys/raft/join-request", sys.JoinRaftRequest)
 
 	// Calls below this line require a valid token
-	skipPaths := []string{"/sys/init", "/sys/seal-status", "/sys/unseal", "/raft/leader", "/raft/status", "/raft/join"}
+	skipPaths := []string{"/sys/init", "/sys/seal-status", "/sys/unseal", "/sys/raft/bootstrap", "/sys/raft/status", "/sys/raft/join", "/sys/raft/join-request"}
 	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		embargoTokenMiddleware := tokenauth.ValidateEmbargoToken(next)
 		return func(c echo.Context) error {
@@ -247,6 +237,8 @@ func StartServer(devMode bool) {
 	e.POST("/sys/rekey/init", sys.RekeyInitPost)
 	e.DELETE("/sys/rekey/init", sys.RekeyInitDelete)
 	e.POST("/sys/rekey/update", sys.RekeyUpdatePost)
+	e.GET("/sys/raft/leader", sys.GetLeader)
+	e.GET("/sys/raft/status", sys.GetRaftStatus)
 	// e.PUT("/sys/mounts/:mount", kvengine.Update_mount)
 	// e.DELETE("/sys/mounts/:mount", kvengine.Delete_mount)
 	// e.POST("/sys/rotate", kvengine.RotateKey)

@@ -6,14 +6,10 @@
 package storage
 
 import (
-	"bytes"
-	"crypto/tls"
 	b64 "encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
-	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -89,33 +85,33 @@ func InitDB(dbType string) {
 		Store.CreateBucket("embargo_tokens")
 		Store.CreateBucket("embargo_policies")
 		println("Buckets created")
-	case "raft":
-		shared.StorageType = "raft"
-		println("Initializing Raft")
-		Store = RaftStorage{}
-		Store, err = Store.OpenDB()
-		if err != nil {
-			fmt.Println(err)
-			os.Exit(1)
-		}
-		_, leaderId := shared.RaftStore.Raft.LeaderWithID()
-		nodeId := os.Getenv("EMBARGO_RAFT_NODE_ID")
-		println("Leader ID: " + leaderId)
-		println("Node ID: " + nodeId)
+		// case "raft":
+		// 	shared.StorageType = "raft"
+		// 	println("Initializing Raft")
+		// 	Store = RaftStorage{}
+		// 	Store, err = Store.OpenDB()
+		// 	if err != nil {
+		// 		fmt.Println(err)
+		// 		os.Exit(1)
+		// 	}
+		// 	_, leaderId := shared.RaftStore.Raft.LeaderWithID()
+		// 	nodeId := os.Getenv("EMBARGO_RAFT_NODE_ID")
+		// 	println("Leader ID: " + leaderId)
+		// 	println("Node ID: " + nodeId)
 
-		if string(leaderId) == nodeId {
-			println("Node is leader")
-			println(string(leaderId))
-			println("Creating buckets")
-			// Store.CreateBucket("embargo_mounts")
-			// Store.CreateBucket("embargo_sys")
-			// Store.CreateBucket("embargo_tokens")
-			// Store.CreateBucket("embargo_policies")
-			println("Buckets created")
-		} else {
-			println("Node is not leader, not creating buckets")
+		// 	if string(leaderId) == nodeId {
+		// 		println("Node is leader")
+		// 		println(string(leaderId))
+		// 		println("Creating buckets")
+		// 		// Store.CreateBucket("embargo_mounts")
+		// 		// Store.CreateBucket("embargo_sys")
+		// 		// Store.CreateBucket("embargo_tokens")
+		// 		// Store.CreateBucket("embargo_policies")
+		// 		println("Buckets created")
+		// 	} else {
+		// 		println("Node is not leader, not creating buckets")
 
-		}
+		// 	}
 
 	}
 
@@ -183,8 +179,27 @@ func InitDB(dbType string) {
 	}
 	println("policies mount created")
 
+	// Check if the system is initialized
+	initialized, _ := Store.ReadKey("embargo_sys", "initialized", false)
+	if initialized == "" {
+		Store.CreateKey("embargo_sys", "initialized", "false", false)
+	}
+
 	println("Database initialized")
 
+}
+
+func RaftStoreInit() {
+	var err error
+
+	shared.StorageType = "raft"
+	println("Initializing Raft")
+	Store = RaftStorage{}
+	Store, err = Store.OpenDB()
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
 }
 
 func GetStore() Storage {
@@ -222,6 +237,33 @@ type CassandraStorage struct {
 
 type RaftStorage struct {
 	Db *raft.Store
+}
+
+func GetEncKeys() (shared.EncryptionKeyList, error) {
+	encKeys := shared.EncryptionKeyList{}
+
+	// Get the encryption key from the database
+	// Decrypt the encryption key
+	// If it fails, return an error
+	e, err := Store.ReadKey("embargo_sys", "encryption_key", false)
+	if err != nil {
+		log.Println("Error reading encryption key", err)
+		panic(err)
+	}
+	decryptedData, err := encryption.DecryptKeys([]byte(e))
+	if err != nil {
+		log.Println("Error decrypting encryption key", err)
+		panic(err)
+	}
+	tmp := new(shared.EncryptionKeyList)
+	err = json.Unmarshal([]byte(decryptedData), tmp)
+	if err != nil {
+		log.Println("Error unmarshalling encryption key", err)
+		panic(err)
+	}
+	// encryption.EncKeys = *tmp
+	encKeys = *tmp
+	return encKeys, nil
 }
 
 func encryptSecret(value string) string {
@@ -758,40 +800,40 @@ func (r RaftStorage) OpenDB() (Storage, error) {
 	time.Sleep(5 * time.Second)
 
 	// check if this node is the leader, if not issue join command if joinAddrsStr is set
-	_, leaderId := r.Db.Raft.LeaderWithID()
-	if string(leaderId) != nodeID {
-		if joinAddrsStr != "" {
-			log.Println("Joining raft cluster")
-			joinAddrs := strings.Split(joinAddrsStr, ",")
-			for _, addr := range joinAddrs {
-				log.Println("Joining " + addr)
-				addrSplit := strings.Split(addr, "-")
-				// nodeId := addrSplit[0]
-				nodeAddr := addrSplit[1]
-				b, err := json.Marshal(map[string]string{"node_addr": bindAddr, "node_id": nodeID})
-				if err != nil {
-					log.Println("error marshalling json")
-					log.Println(err)
-				}
-				transCfg := &http.Transport{
-					TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // ignore expired SSL certificates
-				}
-				client := &http.Client{Transport: transCfg}
-				resp, err := client.Post("https://"+nodeAddr+"/raft/join", "application/json", bytes.NewBuffer(b))
-				if err != nil {
-					log.Println("error joining raft cluster")
-					log.Println(err)
-				}
-				defer resp.Body.Close()
-				htmlData, err := ioutil.ReadAll(resp.Body)
-				if err != nil {
-					log.Println("error reading response body")
-					log.Println(err)
-				}
-				log.Println(string(htmlData))
-			}
-		}
-	}
+	// _, leaderId := r.Db.Raft.LeaderWithID()
+	// if string(leaderId) != nodeID {
+	// 	if joinAddrsStr != "" {
+	// 		log.Println("Joining raft cluster")
+	// 		joinAddrs := strings.Split(joinAddrsStr, ",")
+	// 		for _, addr := range joinAddrs {
+	// 			log.Println("Joining " + addr)
+	// 			addrSplit := strings.Split(addr, "-")
+	// 			// nodeId := addrSplit[0]
+	// 			nodeAddr := addrSplit[1]
+	// 			b, err := json.Marshal(map[string]string{"node_addr": bindAddr, "node_id": nodeID})
+	// 			if err != nil {
+	// 				log.Println("error marshalling json")
+	// 				log.Println(err)
+	// 			}
+	// 			transCfg := &http.Transport{
+	// 				TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // ignore expired SSL certificates
+	// 			}
+	// 			client := &http.Client{Transport: transCfg}
+	// 			resp, err := client.Post("https://"+nodeAddr+"/raft/join", "application/json", bytes.NewBuffer(b))
+	// 			if err != nil {
+	// 				log.Println("error joining raft cluster")
+	// 				log.Println(err)
+	// 			}
+	// 			defer resp.Body.Close()
+	// 			htmlData, err := ioutil.ReadAll(resp.Body)
+	// 			if err != nil {
+	// 				log.Println("error reading response body")
+	// 				log.Println(err)
+	// 			}
+	// 			log.Println(string(htmlData))
+	// 		}
+	// 	}
+	// }
 
 	shared.RaftStore = r.Db
 	shared.RaftNodeId = nodeID
@@ -887,6 +929,8 @@ func (r RaftStorage) CreateKey(bucket string, key string, value string, encrypt 
 		return err
 	}
 	log.Println("bucket: " + b)
+	log.Println("key: " + key)
+	log.Println("value: " + value)
 
 	return nil
 
@@ -924,9 +968,9 @@ func (r RaftStorage) ReadAllKeys(bucket string) (map[string]string, error) {
 
 func (r RaftStorage) ReadKey(bucket string, key string, encrypted bool) (string, error) {
 	var value string
-	// log.Println("starting read key")
-	// log.Println("bucket: " + bucket)
-	// log.Println("key: " + key)
+	log.Println("starting read key")
+	log.Println("bucket: " + bucket)
+	log.Println("key: " + key)
 
 	// get the bucket (aka key)
 	b, err := r.Db.Get(bucket)

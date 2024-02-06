@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/raft"
-	raftboltdb "github.com/hashicorp/raft-boltdb"
+	raftboltdb "github.com/hashicorp/raft-boltdb/v2"
 )
 
 const (
@@ -77,19 +77,19 @@ func (s *Store) Open(enableSingle bool, localID string) error {
 	// Create the log store and stable store.
 	var logStore raft.LogStore
 	var stableStore raft.StableStore
-	if s.inmem {
-		logStore = raft.NewInmemStore()
-		stableStore = raft.NewInmemStore()
-	} else {
-		boltDB, err := raftboltdb.New(raftboltdb.Options{
-			Path: filepath.Join(s.RaftDir, "raft.db"),
-		})
-		if err != nil {
-			return fmt.Errorf("new bbolt store: %s", err)
-		}
-		logStore = boltDB
-		stableStore = boltDB
+	// if s.inmem {
+	// 	logStore = raft.NewInmemStore()
+	// 	stableStore = raft.NewInmemStore()
+	// } else {
+	boltDB, err := raftboltdb.New(raftboltdb.Options{
+		Path: filepath.Join(s.RaftDir, "raft.db"),
+	})
+	if err != nil {
+		return fmt.Errorf("new bbolt store: %s", err)
 	}
+	logStore = boltDB
+	stableStore = boltDB
+	// }
 
 	// Instantiate the Raft systems.
 	log.Println("raft: new raft")
