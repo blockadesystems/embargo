@@ -1,6 +1,5 @@
 # Embargo
 
-
 ## Description
 
 The project is still in the early stages of development and is not ready for production use.
